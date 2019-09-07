@@ -75,11 +75,11 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items := []Item{}
+	items := []ItemWithUserSimple{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT * FROM `items` WHERE `status` IN (?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN (?,?) AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			time.Unix(createdAt, 0),
@@ -95,7 +95,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT * FROM `items` WHERE `status` IN (?,?) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN (?,?) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			ItemsPerPage+1,
@@ -109,11 +109,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		seller, err := getUserSimpleByID(dbx, item.SellerID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusNotFound, "seller not found")
-			return
-		}
+		seller := item.Seller
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
@@ -196,7 +192,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT * FROM `items` WHERE `status` IN (?,?) AND category_id IN (?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN (?,?) AND i.category_id IN (?) AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			categoryIDs,
@@ -213,7 +209,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT * FROM `items` WHERE `status` IN (?,?) AND category_id IN (?) ORDER BY created_at DESC, id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN (?,?) AND i.category_id IN (?) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			categoryIDs,
@@ -226,7 +222,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items := []Item{}
+	items := []ItemWithUserSimple{}
 	err = dbx.Select(&items, inQuery, inArgs...)
 
 	if err != nil {
@@ -237,11 +233,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		seller, err := getUserSimpleByID(dbx, item.SellerID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusNotFound, "seller not found")
-			return
-		}
+		seller := item.Seller
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
