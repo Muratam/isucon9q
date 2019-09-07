@@ -1034,13 +1034,13 @@ var m = new(sync.Mutex)
 var passwordEncryptedMap = map[string][]byte{}
 
 func postLogin(w http.ResponseWriter, r *http.Request) {
-	// for isLocked { // WARN: ロックが解除されるまで sleep
-	// 	time.Sleep(0.1 * time.Second)
-	// }
-	if isLocked { // 複数のログインはだめ
-		outputErrorMsg(w, http.StatusBadRequest, "multiple login")
-		return
+	for isLocked { // WARN: ロックが解除されるまで sleep
+		time.Sleep(100 * time.Millisecond)
 	}
+	// if isLocked { // 複数のログインはだめ
+	// 	outputErrorMsg(w, http.StatusBadRequest, "multiple login")
+	// 	return
+	// }
 	m.Lock()
 	isLocked = true
 	defer func() {
