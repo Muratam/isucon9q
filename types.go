@@ -37,6 +37,11 @@ type Item struct {
 	UpdatedAt   time.Time `json:"-" db:"updated_at"`
 }
 
+type ItemWithUserSimple struct {
+	Item
+	Seller			UserSimple	`db:"seller"`
+}
+
 type ItemSimple struct {
 	ID         int64       `json:"id"`
 	SellerID   int64       `json:"seller_id"`
