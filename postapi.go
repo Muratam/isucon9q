@@ -57,7 +57,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 
 	res := resInitialize{
 		// キャンペーン実施時には還元率の設定を返す。詳しくはマニュアルを参照のこと。
-		Campaign: 0,
+		Campaign: 2,
 		// 実装言語を返す
 		Language: "Go",
 	}
@@ -1040,10 +1040,9 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 
 	if accountName == "" || password == "" {
 		outputErrorMsg(w, http.StatusBadRequest, "all parameters are required")
-
 		return
 	}
-
+	log.Println("signin | account:" + accountName + " | " + password)
 	u := User{}
 	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
 	if err == sql.ErrNoRows {
@@ -1052,13 +1051,13 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
 	if err == bcrypt.ErrMismatchedHashAndPassword {
+		log.Println("signin failed | account:" + accountName + " | " + password)
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
@@ -1068,6 +1067,7 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "crypt error")
 		return
 	}
+	log.Println("signin successed | account:" + accountName + " | " + password)
 
 	session := getSession(r)
 
@@ -1102,7 +1102,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 4)
 	if err != nil {
 		log.Print(err)
 
