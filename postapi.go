@@ -16,6 +16,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var (
+	users []User
+)
+
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	ri := reqInitialize{}
 
@@ -49,6 +53,14 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		"shipment_service_url",
 		ri.ShipmentServiceURL,
 	)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		return
+	}
+
+	// user on memory
+	err = dbx.Get(&users, "select id, account_name, hassed_password, address from users")
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
