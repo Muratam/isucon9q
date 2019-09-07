@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -1027,7 +1029,25 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var isLocked = false
+var m = new(sync.Mutex)
+var passwordEncryptedMap = map[string][]byte{}
+
 func postLogin(w http.ResponseWriter, r *http.Request) {
+	// for isLocked { // WARN: ロックが解除されるまで sleep
+	// 	time.Sleep(0.1 * time.Second)
+	// }
+	if isLocked { // 複数のログインはだめ
+		outputErrorMsg(w, http.StatusBadRequest, "multiple login")
+		return
+	}
+	m.Lock()
+	isLocked = true
+	defer func() {
+		m.Unlock()
+		isLocked = false
+	}()
+
 	rl := reqLogin{}
 	err := json.NewDecoder(r.Body).Decode(&rl)
 	if err != nil {
@@ -1042,7 +1062,6 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusBadRequest, "all parameters are required")
 		return
 	}
-	log.Println("signin | account:" + accountName + " | " + password)
 	u := User{}
 	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
 	if err == sql.ErrNoRows {
@@ -1054,20 +1073,24 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
 	}
-
-	err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
-	if err == bcrypt.ErrMismatchedHashAndPassword {
-		log.Println("signin failed | account:" + accountName + " | " + password)
-		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
-		return
+	if v, loginExists := passwordEncryptedMap[password]; loginExists {
+		if !bytes.Equal(u.HashedPassword, v) {
+			outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
+			return
+		}
+	} else {
+		err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
+		if err == bcrypt.ErrMismatchedHashAndPassword {
+			outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
+			return
+		}
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "crypt error")
+			return
+		}
+		passwordEncryptedMap[password] = u.HashedPassword
 	}
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "crypt error")
-		return
-	}
-	log.Println("signin successed | account:" + accountName + " | " + password)
 
 	session := getSession(r)
 
