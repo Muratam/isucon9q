@@ -1295,14 +1295,18 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next1Password := next1(password)
+	log.Println("signin try:" + accountName + " " + password)
 	if v, loginExists := accountNameToEncryptPasswordMap.Load(accountName); loginExists {
 		if strings.Compare(next1Password, string(v)) != 0 { // パスワードが違った
+			log.Println("signin compare failed:" + accountName + " " + password)
 			outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 			return
 		}
+		log.Println("signin success:" + accountName + " " + password)
 	} else {
 		err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
 		if err == bcrypt.ErrMismatchedHashAndPassword {
+			log.Println("signin bcrypt  failed:" + accountName + " " + password)
 			outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 			return
 		}
@@ -1313,6 +1317,7 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		// 新たにログインに成功
 		accountNameToEncryptPasswordMap.Store(accountName, next1Password)
+		log.Println("signin register:" + accountName + " " + password)
 	}
 
 	session := getSession(r)
