@@ -1072,8 +1072,8 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// 新たにログインに成功
-		// 初期の4000人は保存しているのでこれ以上やらない
-		// accountNameToEncryptPasswordMap.Store(accountName, next1Password)
+		// 初期の4000人は保存しており、これ以上やっても(不定なこともあって)微妙かも？
+		accountNameToEncryptPasswordMap.Store(accountName, next1Password)
 	}
 
 	session := getSession(r)

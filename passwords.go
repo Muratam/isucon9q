@@ -30,6 +30,9 @@ func next1(s string) string {
 	return string(s2)
 }
 
+// ユーザー情報の json は全てここに置いてあります
+// https://gist.github.com/Muratam/53a63033915128c208c99b4e3894e89e
+
 func setUpAccountNameToEncryptPasswordMap() {
 	accountNameToEncryptPasswordMap.Store("uesugi_shinichi", next1("pwhBq/lbL8Gz2xU4hAHcT4MaaS3gygDxxBGhlt+pr74"))
 	accountNameToEncryptPasswordMap.Store("maki_mayuko", next1("5+qHwh2zs79WbM5uDdckEmU4HEc2SRr/ctMLAdIIPs4"))
