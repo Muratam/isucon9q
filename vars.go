@@ -2,6 +2,7 @@ package main
 
 import (
 	"html/template"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -49,6 +50,7 @@ var (
 	templates *template.Template
 	dbx       *sqlx.DB
 	store     sessions.Store
+	client		http.Client
 )
 
 // とりあえず plain password だけを管理するサーバー(ID/AccountName/PlainPassword以外の情報は嘘)

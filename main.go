@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"strconv"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -18,6 +19,14 @@ import (
 
 func init() {
 	store = sessions.NewCookieStore([]byte("abc"))
+	client = http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns: 500,
+			MaxIdleConnsPerHost: 200,
+			IdleConnTimeout: 120 * time.Second,
+		},
+	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
