@@ -218,7 +218,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db lock error")
+		outputErrorMsg(w, http.StatusForbidden, "db lock error")
 		tx.Rollback()
 		return
 	}
