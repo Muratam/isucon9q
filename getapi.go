@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -440,8 +441,11 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	itemDetails := []ItemDetail{}
-	for _, item := range items {
+	wg := sync.WaitGroup{}
+	itemDetails := make([]ItemDetail, 0, len(items))
+	chans := make([]chan string, len(items))
+	for i, item := range items {
+		chans[i] = make(chan string, 1)
 		seller, err := getUserSimpleByID(tx, item.SellerID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
@@ -510,17 +514,24 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			ssrStatus := shipping.Status
+			wg.Add(1)
 			if ssrStatus != ShippingsStatusDone {
-				ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-					ReserveID: shipping.ReserveID,
-				})
-				if err != nil {
-					log.Print(err)
-					outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-					tx.Rollback()
-					return
-				}
-				ssrStatus = ssr.Status
+				go func(i int) {
+					ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+						ReserveID: shipping.ReserveID,
+					})
+					if err != nil {
+						log.Print(err)
+						outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+						tx.Rollback()
+						return
+					}
+					<-chans[i]
+					itemDetails[i].ShippingStatus = ssr.Status
+					wg.Done()
+				}(i)
+			} else {
+				wg.Done()
 			}
 
 			itemDetail.TransactionEvidenceID = transactionEvidence.ID
@@ -529,7 +540,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		itemDetails = append(itemDetails, itemDetail)
+
+		chans[i] <- ""
+
+		if len(itemDetails) > TransactionsPerPage {
+			break
+		}
 	}
+
+	wg.Wait()
+
 	tx.Commit()
 
 	hasNext := false
