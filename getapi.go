@@ -73,13 +73,28 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	user, errCode, errMsg := getUser(r)
+	if errMsg != "" {
+		outputErrorMsg(w, errCode, errMsg)
+		return
+	}
+
+	var categoryIDs []int
+	err = dbx.Select(&categoryIDs, "SELECT category_id FROM items WHERE buyer_id=?", user.ID)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+		return
+	}
+
 	items := []Item{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? AND timedateid < ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
+			categoryIDs,
 			ItemsPerPage+1,
 		)
 		if err != nil {
@@ -90,8 +105,9 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? ORDER BY timedateid DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
+			categoryIDs,
 			ItemsPerPage+1,
 		)
 		if err != nil {
