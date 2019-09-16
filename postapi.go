@@ -475,55 +475,24 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx := dbx.MustBegin()
+
 	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? FOR UPDATE", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
+		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-
+		tx.Rollback()
 		return
 	}
 
 	if transactionEvidence.SellerID != seller.ID {
 		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		return
-	}
-
-	tx := dbx.MustBegin()
-
-	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "items not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	if item.Status != ItemStatusTrading {
-		outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
