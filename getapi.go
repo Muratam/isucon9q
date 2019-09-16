@@ -225,16 +225,23 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
+
 	itemSimples := []ItemSimple{}
+	keys := make([]string, 0)
 	for _, item := range items {
-		var seller User
 		sellerIdStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIdStr, &seller)
+		keys = append(keys, sellerIdStr)
+	}
+	values := smUserServer.MultiLoad(keys)
+	for i, item := range items {
+		var seller User
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		value := values[i]
+		DecodeFromBytes(value, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
 		simpleSeller.AccountName = seller.AccountName
@@ -341,18 +348,30 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	itemSimples := []ItemSimple{}
+	keys := make([]string, 0)
 	for _, item := range items {
+		sellerIdStr := strconv.Itoa(int(item.SellerID))
+		keys = append(keys, sellerIdStr)
+	}
+	values := smUserServer.MultiLoad(keys)
+	for i, item := range items {
+		var seller User
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		value := values[i]
+		DecodeFromBytes(value, &seller)
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &userSimple,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
