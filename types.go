@@ -15,24 +15,13 @@ type User struct {
 	NumSellItems   int       `json:"num_sell_items" db:"num_sell_items"`
 	LastBump       time.Time `json:"-" db:"last_bump"`
 	CreatedAt      time.Time `json:"-" db:"created_at"`
+	PlainPassword  string
 }
 
 type UserSimple struct {
 	ID           int64  `json:"id" db:"id"`
 	AccountName  string `json:"account_name" db:"account_name"`
 	NumSellItems int    `json:"num_sell_items" db:"num_sell_items"`
-}
-
-// For PlainPassword (AccountName / ID/ PlainPassword だけは保証されるが他は嘘)
-type UserForPlainPassword struct {
-	AccountName   string // simple
-	Address       string
-	CreatedAt     int64 // unixtime : time.Time
-	ID            int64 // simple
-	NumSellItems  int   // simple
-	PlainPassword string
-	// HashedPassword []byte // eliminated
-	// LastBump       time.Time // ??
 }
 
 type Item struct {
@@ -47,6 +36,7 @@ type Item struct {
 	CategoryID  int       `json:"category_id" db:"category_id"`
 	CreatedAt   time.Time `json:"-" db:"created_at"`
 	UpdatedAt   time.Time `json:"-" db:"updated_at"`
+	TimeDateID  string    `json:"-" db:"timedateid"`
 }
 
 type ItemWithUserSimple struct {

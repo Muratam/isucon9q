@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,26 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+func initializeUsersDB() {
+	if !isMasterServerIP {
+		return
+	}
+	smUserServer.ClearAll()
+	accountNameToIDServer.ClearAll()
+	users := make([]User, 0)
+	err := dbx.Select(&users, "SELECT * FROM `users`")
+	if err != nil {
+		panic(err)
+	}
+	for _, u := range users {
+		u.PlainPassword = userIdToPlainPassword[int(u.ID)]
+		uidStr := strconv.Itoa(int(u.ID))
+		name := u.AccountName
+		smUserServer.Store(uidStr, u)
+		accountNameToIDServer.Store(name, uidStr)
+	}
+}
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	ri := reqInitialize{}
@@ -42,7 +63,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	_, err = dbx.Exec(
@@ -52,19 +73,12 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	if isMasterServerIP {
-		smUserServer.ClearAll()
-		accountNameToIDServer.ClearAll()
+		initializeUsersDB()
 		smItemPostBuyIsLockedServer.ClearAll()
-		for _, u := range usersForPlainPassword {
-			id := strconv.Itoa(int(u.ID))
-			name := u.AccountName
-			smUserServer.Store(id, u)
-			accountNameToIDServer.Store(name, id)
-		}
 	}
 
 	res := resInitialize{
@@ -115,7 +129,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -129,7 +143,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -148,7 +162,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -156,7 +170,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -216,17 +230,12 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seller := User{}
-	err = dbx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ?", targetItem.SellerID)
-	if err == sql.ErrNoRows {
+	sellerIDStr := strconv.Itoa(int(targetItem.SellerID))
+	if !smUserServer.Exists(sellerIDStr) {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error2")
-		return
-	}
-
+	smUserServer.Load(sellerIDStr, &seller)
 	category, err := getCategoryByID(dbx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
@@ -263,7 +272,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error()+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -400,7 +409,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -426,7 +435,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -451,7 +460,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -500,7 +509,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -526,7 +535,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -556,7 +565,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -569,7 +578,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -614,7 +623,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -634,7 +643,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -655,7 +664,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -685,7 +694,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -698,7 +707,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -711,7 +720,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -804,63 +813,55 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "Saving image failed")
 		return
 	}
-
-	tx := dbx.MustBegin()
-
-	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
-	if err == sql.ErrNoRows {
+	strUserId := strconv.Itoa(int(user.ID))
+	if !smUserServer.Exists(strUserId) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		seller.ID,
-		ItemStatusOnSale,
-		name,
-		price,
-		description,
-		imgName,
-		category.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	itemID, err := result.LastInsertId()
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	now := time.Now()
-	_, err = tx.Exec("UPDATE `users` SET `num_sell_items`=?, `last_bump`=? WHERE `id`=?",
-		seller.NumSellItems+1,
-		now,
-		seller.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-	tx.Commit()
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(resSell{ID: itemID})
+	smUserServer.StartTransactionWithKey(strUserId, func(smtx *SyncMapServerTransaction) {
+		tx := dbx.MustBegin()
+		seller := User{}
+		smtx.Load(strUserId, &seller)
+		now := time.Now().Truncate(time.Second)
+		result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			seller.ID,
+			ItemStatusOnSale,
+			name,
+			price,
+			description,
+			imgName,
+			category.ID,
+			now,
+			now,
+			strconv.Itoa(rand.Int()),
+		)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+		itemID, err := result.LastInsertId()
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("UPDATE `items` SET `timedateid`=? WHERE `id`=?", now.Format("20060102150405")+fmt.Sprintf("%08d", itemID), itemID)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+		seller.NumSellItems += 1
+		seller.LastBump = now
+		smtx.Store(strUserId, seller)
+		tx.Commit()
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resSell{ID: itemID})
+	})
 }
 
 func postBump(w http.ResponseWriter, r *http.Request) {
@@ -884,88 +885,72 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
-
-	tx := dbx.MustBegin()
-
-	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "item not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	if targetItem.SellerID != user.ID {
-		outputErrorMsg(w, http.StatusForbidden, "自分の商品以外は編集できません")
-		tx.Rollback()
-		return
-	}
-
-	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
-	if err == sql.ErrNoRows {
+	uidStr := strconv.Itoa(int(user.ID))
+	if !smUserServer.Exists(uidStr) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
+	smUserServer.StartTransactionWithKey(uidStr, func(smtx *SyncMapServerTransaction) {
+		tx := dbx.MustBegin()
+		targetItem := Item{}
+		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+		if err == sql.ErrNoRows {
+			outputErrorMsg(w, http.StatusNotFound, "item not found")
+			tx.Rollback()
+			return
+		}
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
 
-	now := time.Now()
-	// last_bump + 3s > now
-	if seller.LastBump.Add(BumpChargeSeconds).After(now) {
-		outputErrorMsg(w, http.StatusForbidden, "Bump not allowed")
-		tx.Rollback()
-		return
-	}
+		if targetItem.SellerID != user.ID {
+			outputErrorMsg(w, http.StatusForbidden, "自分の商品以外は編集できません")
+			tx.Rollback()
+			return
+		}
 
-	_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=? WHERE id=?",
-		now,
-		now,
-		targetItem.ID,
-	)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
+		seller := User{}
+		smtx.Load(uidStr, &seller)
+		now := time.Now().Truncate(time.Second)
+		// last_bump + 3s > now
+		if seller.LastBump.Add(BumpChargeSeconds).After(now) {
+			outputErrorMsg(w, http.StatusForbidden, "Bump not allowed")
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=?, `timedateid`=? WHERE id=?",
+			now,
+			now,
+			now.Format("20060102150405")+fmt.Sprintf("%08d", targetItem.ID),
+			targetItem.ID,
+		)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			return
+		}
+		seller.LastBump = now
+		smtx.Store(uidStr, seller)
+		// WARN: 整合性大丈夫かな....？
+		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
 
-	_, err = tx.Exec("UPDATE `users` SET `last_bump`=? WHERE id=?",
-		now,
-		seller.ID,
-	)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	tx.Commit()
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(&resItemEdit{
-		ItemID:        targetItem.ID,
-		ItemPrice:     targetItem.Price,
-		ItemCreatedAt: targetItem.CreatedAt.Unix(),
-		ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
+		tx.Commit()
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(&resItemEdit{
+			ItemID:        targetItem.ID,
+			ItemPrice:     targetItem.Price,
+			ItemCreatedAt: targetItem.CreatedAt.Unix(),
+			ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
+		})
 	})
 }
 
@@ -990,25 +975,18 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	idStr := ""
 	accountNameToIDServer.Load(accountName, &idStr)
-	up := UserForPlainPassword{}
-	smUserServer.Load(idStr, &up)
-	if strings.Compare(up.PlainPassword, password) != 0 {
+	u := User{}
+	smUserServer.Load(idStr, &u)
+	if strings.Compare(u.PlainPassword, password) != 0 {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
 	session := getSession(r)
-	session.Values["user_id"] = up.ID
+	session.Values["user_id"] = u.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
-		return
-	}
-	u := User{}
-	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
@@ -1040,44 +1018,25 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "error")
 		return
 	}
-
-	result, err := dbx.Exec("INSERT INTO `users` (`account_name`, `hashed_password`, `address`) VALUES (?, ?, ?)",
-		accountName,
-		hashedPassword,
-		address,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	userID, err := result.LastInsertId()
-
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	u := User{
-		ID:          userID,
-		AccountName: accountName,
-		Address:     address,
-	}
-	up := UserForPlainPassword{
-		AccountName:   accountName,
-		ID:            u.ID,
-		PlainPassword: password,
-	}
-	idStr := strconv.Itoa(int(up.ID))
-	smUserServer.Store(idStr, up)
-	accountNameToIDServer.Store(up.AccountName, idStr)
+	// WARN: 合ってる？
+	// トランザクションが必要？(ID)
+	var newUser User
+	newUser.ID = int64(smUserServer.GetLen() + 1)
+	newUser.AccountName = accountName
+	newUser.HashedPassword = hashedPassword
+	newUser.Address = address
+	// WARN
+	newUser.NumSellItems = 0
+	t, _ := time.Parse("2006-01-02 15:04:05", "2000-01-01 00:00:00")
+	newUser.LastBump = t
+	newUser.CreatedAt = time.Now() // CURRENT_TIMESTAMP
+	newUser.PlainPassword = password
+	idStr := strconv.Itoa(int(newUser.ID))
+	smUserServer.Store(idStr, newUser)
+	accountNameToIDServer.Store(newUser.AccountName, idStr)
 
 	session := getSession(r)
-	session.Values["user_id"] = u.ID
+	session.Values["user_id"] = newUser.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
@@ -1086,5 +1045,5 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(u)
+	json.NewEncoder(w).Encode(newUser)
 }
