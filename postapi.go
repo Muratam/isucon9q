@@ -17,6 +17,30 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func initializeUsersDB() {
+	smUserServer.ClearAll()
+	accountNameToIDServer.ClearAll()
+	// 初期データ4000件全部DBから取得して構成
+	rows, err := dbx.Query("SELECT * FROM `users`")
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var u User
+		err := rows.Scan(&u)
+		if err != nil {
+			panic(err)
+		}
+		u.PlainPassword = userIdToPlainPassword[int(u.ID)]
+		uidStr := strconv.Itoa(int(u.ID))
+		name := u.AccountName
+		smUserServer.Store(uidStr, u)
+		accountNameToIDServer.Store(name, uidStr)
+	}
+
+}
+
 func postInitialize(w http.ResponseWriter, r *http.Request) {
 	ri := reqInitialize{}
 
@@ -56,27 +80,8 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if isMasterServerIP {
-		smUserServer.ClearAll()
-		accountNameToIDServer.ClearAll()
+		initializeUsersDB()
 		smItemPostBuyIsLockedServer.ClearAll()
-		// 初期データ4000件全部DBから取得して構成
-		rows, err := dbx.Query("SELECT * FROM `users`")
-		if err != nil {
-			panic(err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var u User
-			err := rows.Scan(&u)
-			if err != nil {
-				panic(err)
-			}
-			u.PlainPassword = userIdToPlainPassword[int(u.ID)]
-			uidStr := strconv.Itoa(int(u.ID))
-			name := u.AccountName
-			smUserServer.Store(uidStr, u)
-			accountNameToIDServer.Store(name, uidStr)
-		}
 	}
 
 	res := resInitialize{
