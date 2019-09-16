@@ -1028,10 +1028,11 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	newUser.AccountName = accountName
 	newUser.HashedPassword = hashedPassword
 	newUser.Address = address
-	// TODO:
-	// NumOfSellItem 不明
-	// LastBump 不明
-	// CreatedAt 不明
+	// WARN
+	newUser.NumSellItems = 0
+	t, _ := time.Parse("2006-01-02 15:04:05", "2000-01-01 00:00:00")
+	newUser.LastBump = t
+	newUser.CreatedAt = time.Now() // CURRENT_TIMESTAMP
 	newUser.PlainPassword = password
 	idStr := strconv.Itoa(int(newUser.ID))
 	smUserServer.Store(idStr, newUser)
