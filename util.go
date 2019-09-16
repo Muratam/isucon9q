@@ -65,7 +65,7 @@ func getShipmentServiceURL() string {
 func getUserSimples(q sqlx.Queryer) (userSimples map[int64]UserSimple, err error) {
 	tmp := []UserSimple{}
 	userSimples = map[int64]UserSimple{}
-	err = sqlx.Select(q, &tmp, "SELECT * FROM `users`")
+	err = sqlx.Select(q, &tmp, "SELECT id, account_name, num_sell_items  FROM `users`")
 	for _, v := range tmp {
 		userSimples[v.ID] = v
 	}
