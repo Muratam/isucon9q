@@ -327,12 +327,10 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		chPstrErr <- PstrErr{pstr, err}
 	}()
 
-	var scr *APIShipmentCreateRes
-	var pstr *APIPaymentServiceTokenRes
 	for i := 0; i < 2; i++ {
 		select {
 		case scrErr := <- chScrErr:
-			scr, err = scrErr.scr, scrErr.err
+			scr, err := scrErr.scr, scrErr.err
 			if err != nil {
 				log.Print(err)
 				outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
@@ -361,8 +359,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case pstrErr := <- chPstrErr:
-			pstr, err = pstrErr.pstr, pstrErr.err
-
+			pstr, err := pstrErr.pstr, pstrErr.err
 			if err != nil {
 				log.Print(err)
 		
