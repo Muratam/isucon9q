@@ -201,7 +201,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error1")
 	}
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
@@ -221,10 +221,9 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		return
 	}
-
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error2")
 		return
 	}
 
@@ -259,7 +258,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Print(err)
 
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error3")
 			tx.Rollback()
 			return
 		}
@@ -268,7 +267,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Print(err)
 
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error4")
 			tx.Rollback()
 			return
 		}
@@ -282,7 +281,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Print(err)
 
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error5")
 			tx.Rollback()
 			return
 		}
@@ -297,30 +296,9 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			log.Print(err)
 			outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
 			tx.Rollback()
-
 			return
 		}
-
-		_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-			transactionEvidenceID,
-			ShippingsStatusInitial,
-			targetItem.Name,
-			targetItem.ID,
-			scr.ReserveID,
-			scr.ReserveTime,
-			buyer.Address,
-			buyer.AccountName,
-			seller.Address,
-			seller.AccountName,
-			"",
-		)
-		if err != nil {
-			log.Print(err)
-
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
-			tx.Rollback()
-			return
-		}
+		// HERE
 		// NOTE:
 		// {お金がない人:1,お金がある人:2} -> 2 が変えなくてつらい
 		// まあでもいけるやろ
@@ -351,6 +329,28 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			tx.Rollback()
 			return
 		}
+
+		_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+			transactionEvidenceID,
+			ShippingsStatusInitial,
+			targetItem.Name,
+			targetItem.ID,
+			scr.ReserveID,
+			scr.ReserveTime,
+			buyer.Address,
+			buyer.AccountName,
+			seller.Address,
+			seller.AccountName,
+			"",
+		)
+		if err != nil {
+			log.Print(err)
+
+			outputErrorMsg(w, http.StatusInternalServerError, "db error6")
+			tx.Rollback()
+			return
+		}
+
 		tx.Commit()
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
