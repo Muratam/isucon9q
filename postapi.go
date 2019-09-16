@@ -108,7 +108,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 
 	tx := dbx.MustBegin()
 
-	res, err := tx.Exec("UPDATE `items` SET `price` = ?, `updated_at` = ? WHERE `id` = ?, `status` = ?, `seller_id` = ?",
+	res, err := tx.Exec("UPDATE `items` SET `price` = ?, `updated_at` = ? WHERE `id` = ? AND `status` = ? AND `seller_id` = ?",
 		price,
 		time.Now(),
 		itemID,
@@ -675,7 +675,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := tx.Exec("UPDATE `items` SET `status` = ?, `updated_at` = ? WHERE `id` = ?, status = ?",
+	res, err := tx.Exec("UPDATE `items` SET `status` = ?, `updated_at` = ? WHERE `id` = ? AND status = ?",
 		ItemStatusSoldOut,
 		time.Now(),
 		itemID,
