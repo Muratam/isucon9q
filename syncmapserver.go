@@ -120,6 +120,7 @@ func DecodeFromBytes(bytes_ []byte, x interface{}) {
 	dec := gob.NewDecoder(&buf)
 	err := dec.Decode(x)
 	if err != nil {
+		log.Fatal(err)
 		panic(err)
 	}
 }
