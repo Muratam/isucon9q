@@ -18,6 +18,9 @@ import (
 )
 
 func initializeUsersDB() {
+	if !isMasterServerIP {
+		return
+	}
 	smUserServer.ClearAll()
 	accountNameToIDServer.ClearAll()
 	users := make([]User, 0)
