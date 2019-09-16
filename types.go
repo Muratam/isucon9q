@@ -47,6 +47,7 @@ type Item struct {
 	CategoryID  int       `json:"category_id" db:"category_id"`
 	CreatedAt   time.Time `json:"-" db:"created_at"`
 	UpdatedAt   time.Time `json:"-" db:"updated_at"`
+	TimeDateID	string		`json:"-" db:"timedateid"`
 }
 
 type ItemWithUserSimple struct {

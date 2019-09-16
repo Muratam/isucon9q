@@ -821,7 +821,8 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+	now := time.Now()
+	result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		seller.ID,
 		ItemStatusOnSale,
 		name,
@@ -829,6 +830,9 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		description,
 		imgName,
 		category.ID,
+		now,
+		now,
+		"",
 	)
 	if err != nil {
 		log.Print(err)
@@ -845,7 +849,15 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
+	_, err = tx.Exec("UPDATE `items` SET `timedateid`=? WHERE `id`=?", now.Format("20060102150405") + fmt.Sprintf("%08d", itemID), itemID)
+	if err != nil {
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		return
+	}
+
+	now = time.Now()
 	_, err = tx.Exec("UPDATE `users` SET `num_sell_items`=?, `last_bump`=? WHERE `id`=?",
 		seller.NumSellItems+1,
 		now,
@@ -929,9 +941,10 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=? WHERE id=?",
+	_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=?, `timedateid`=? WHERE id=?",
 		now,
 		now,
+		now.Format("20060102150405") + fmt.Sprintf("%08d" , targetItem.ID),
 		targetItem.ID,
 	)
 	if err != nil {

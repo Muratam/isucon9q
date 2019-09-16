@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -80,10 +81,9 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.timedateid < ? ORDER BY i.timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
-			time.Unix(createdAt, 0),
-			time.Unix(createdAt, 0),
+			time.Unix(createdAt, 0).Format("20060102150405") + fmt.Sprintf("%08d", itemID),
 			itemID,
 			ItemsPerPage+1,
 		)
@@ -95,7 +95,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? ORDER BY i.timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemsPerPage+1,
 		)
@@ -191,12 +191,10 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) AND i.timedateid < ? ORDER BY i.timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
-			time.Unix(createdAt, 0),
-			time.Unix(createdAt, 0),
-			itemID,
+			time.Unix(createdAt, 0).Format("20060102150405") + fmt.Sprintf("%08d", itemID),
 			ItemsPerPage+1,
 		)
 		if err != nil {
@@ -207,7 +205,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) ORDER BY i.timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
 			ItemsPerPage+1,
