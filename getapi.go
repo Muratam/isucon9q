@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -36,16 +37,12 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	if !ok {
 		return user, http.StatusNotFound, "no session"
 	}
-
-	err := dbx.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
-	if err == sql.ErrNoRows {
+	// WARN: 型が怪しいけど多分大丈夫
+	userIDStr := strconv.Itoa(int(userID.(int64)))
+	if !smUserServer.Exists(userIDStr) {
 		return user, http.StatusNotFound, "user not found"
 	}
-	if err != nil {
-		log.Print(err)
-		return user, http.StatusInternalServerError, "db error"
-	}
-
+	smUserServer.Load(userIDStr, &user)
 	return user, http.StatusOK, ""
 }
 
@@ -76,48 +73,52 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items := []ItemWithUserSimple{}
+	items := []Item{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
-			time.Unix(createdAt, 0),
-			time.Unix(createdAt, 0),
-			itemID,
+			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
 			ItemsPerPage+1,
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemsPerPage+1,
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		seller := item.Seller
+		var seller User
+		sellerIDStr := strconv.Itoa(int(item.SellerID))
+		smUserServer.Load(sellerIDStr, &seller)
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &seller,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
@@ -161,7 +162,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	err = dbx.Select(&categoryIDs, "SELECT id FROM `categories` WHERE parent_id=?", rootCategory.ID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -188,58 +189,69 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 
 	var inQuery string
 	var inArgs []interface{}
+
 	if itemID > 0 && createdAt > 0 {
 		// paging
-		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
-			time.Unix(createdAt, 0),
-			time.Unix(createdAt, 0),
-			itemID,
+			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
 			ItemsPerPage+1,
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
 		// 1st page
-		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
 			ItemsPerPage+1,
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
 
-	items := []ItemWithUserSimple{}
+	items := []Item{}
 	err = dbx.Select(&items, inQuery, inArgs...)
 
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
 	itemSimples := []ItemSimple{}
+	// keys := make([]string, 0)
+	// for _, item := range items {
+	// 	sellerIdStr := strconv.Itoa(int(item.SellerID))
+	// 	keys = append(keys, sellerIdStr)
+	// }
+	// values := smUserServer.MultiLoad(keys)
 	for _, item := range items {
-		seller := item.Seller
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		// value := values[i]
+		// DecodeFromBytes(value, &seller)
+		var seller User
+		sellerIdStr := strconv.Itoa(int(item.SellerID))
+		smUserServer.Load(sellerIdStr, &seller)
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &seller,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
@@ -319,7 +331,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
@@ -334,12 +346,18 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
-
 	itemSimples := []ItemSimple{}
+	var seller User
+	var simpleSeller UserSimple
+	sellerIdStr := strconv.Itoa(int(userSimple.ID))
+	smUserServer.Load(sellerIdStr, &seller)
+	simpleSeller.ID = seller.ID
+	simpleSeller.AccountName = seller.AccountName
+	simpleSeller.NumSellItems = seller.NumSellItems
 	for _, item := range items {
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
@@ -349,7 +367,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &userSimple,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
@@ -421,7 +439,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -435,7 +453,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -444,10 +462,17 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
+	userSimples, err := getUserSimples(tx)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
+		seller, ok := userSimples[item.SellerID]
+		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
 			return
@@ -494,7 +519,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err != sql.ErrNoRows {
 			// It's able to ignore ErrNoRows
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -509,7 +534,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 			if err != nil {
 				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 				tx.Rollback()
 				return
 			}
@@ -591,7 +616,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -640,7 +665,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err != sql.ErrNoRows {
 			// It's able to ignore ErrNoRows
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 
@@ -653,7 +678,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 			}
 			if err != nil {
 				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 				return
 			}
 
@@ -689,7 +714,7 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -705,7 +730,7 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -741,7 +766,7 @@ func getSettings(w http.ResponseWriter, r *http.Request) {
 	err := dbx.Select(&categories, "SELECT * FROM `categories`")
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	ress.Categories = categories
@@ -755,7 +780,7 @@ func getReports(w http.ResponseWriter, r *http.Request) {
 	err := dbx.Select(&transactionEvidences, "SELECT * FROM `transaction_evidences` WHERE `id` > 15007")
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 

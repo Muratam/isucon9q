@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"strconv"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -17,6 +19,7 @@ import (
 )
 
 func init() {
+	rand.Seed(time.Now().UnixNano())
 	store = sessions.NewCookieStore([]byte("abc"))
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -105,5 +108,7 @@ func main() {
 	mux.HandleFunc(pat.Get("/users/setting"), getIndex)
 	// Assets
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
+	// TODO: とりあえず初期化
+	initializeUsersDB()
 	log.Fatal(http.ListenAndServe(":8000", mux))
 }
