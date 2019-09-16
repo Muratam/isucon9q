@@ -243,134 +243,134 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	strItemId := strconv.Itoa(int(rb.ItemID))
-	if !smItemPostBuyIsLockedServer.Exists(strItemId) {
-		smItemPostBuyIsLockedServer.Store(strItemId, false)
-	}
-	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
-		outputErrorMsg(w, http.StatusForbidden, "item is not for sale2")
+	// strItemId := strconv.Itoa(int(rb.ItemID))
+	// if !smItemPostBuyIsLockedServer.Exists(strItemId) {
+	// 	smItemPostBuyIsLockedServer.Store(strItemId, false)
+	// }
+	// if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
+	// 	outputErrorMsg(w, http.StatusForbidden, "item is not for sale2")
+	// 	return
+	// }
+	// smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(smtx *SyncMapServerTransaction) {
+	// 	isSoldOut := false
+	// 	smtx.Load(strItemId, &isSoldOut)
+	// 	if isSoldOut {
+	// 		outputErrorMsg(w, http.StatusForbidden, "item is not for sale3")
+	// 		return
+	// 	}
+	tx := dbx.MustBegin()
+	result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		targetItem.SellerID,
+		buyer.ID,
+		TransactionEvidenceStatusWaitShipping,
+		targetItem.ID,
+		targetItem.Name,
+		targetItem.Price,
+		targetItem.Description,
+		category.ID,
+		category.ParentID,
+	)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error()+err.Error())
+		tx.Rollback()
 		return
 	}
-	smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(smtx *SyncMapServerTransaction) {
-		isSoldOut := false
-		smtx.Load(strItemId, &isSoldOut)
-		if isSoldOut {
-			outputErrorMsg(w, http.StatusForbidden, "item is not for sale3")
-			return
-		}
-		tx := dbx.MustBegin()
-		result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			targetItem.SellerID,
-			buyer.ID,
-			TransactionEvidenceStatusWaitShipping,
-			targetItem.ID,
-			targetItem.Name,
-			targetItem.Price,
-			targetItem.Description,
-			category.ID,
-			category.ParentID,
-		)
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error()+err.Error())
-			tx.Rollback()
-			return
-		}
 
-		transactionEvidenceID, err := result.LastInsertId()
-		if err != nil {
-			log.Print(err)
+	transactionEvidenceID, err := result.LastInsertId()
+	if err != nil {
+		log.Print(err)
 
-			outputErrorMsg(w, http.StatusInternalServerError, "db error4")
-			tx.Rollback()
-			return
-		}
+		outputErrorMsg(w, http.StatusInternalServerError, "db error4")
+		tx.Rollback()
+		return
+	}
 
-		_, err = tx.Exec("UPDATE `items` SET `buyer_id` = ?, `status` = ?, `updated_at` = ? WHERE `id` = ?",
-			buyer.ID,
-			ItemStatusTrading,
-			time.Now(),
-			targetItem.ID,
-		)
-		if err != nil {
-			log.Print(err)
+	_, err = tx.Exec("UPDATE `items` SET `buyer_id` = ?, `status` = ?, `updated_at` = ? WHERE `id` = ?",
+		buyer.ID,
+		ItemStatusTrading,
+		time.Now(),
+		targetItem.ID,
+	)
+	if err != nil {
+		log.Print(err)
 
-			outputErrorMsg(w, http.StatusInternalServerError, "db error5")
-			tx.Rollback()
-			return
-		}
+		outputErrorMsg(w, http.StatusInternalServerError, "db error5")
+		tx.Rollback()
+		return
+	}
 
-		scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
-			ToAddress:   buyer.Address,
-			ToName:      buyer.AccountName,
-			FromAddress: seller.Address,
-			FromName:    seller.AccountName,
-		})
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-			tx.Rollback()
-			return
-		}
-		// HERE
-		// NOTE:
-		// {お金がない人:1,お金がある人:2} -> 2 が変えなくてつらい
-		// まあでもいけるやろ
-		pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
-			ShopID: PaymentServiceIsucariShopID,
-			Token:  rb.Token,
-			APIKey: PaymentServiceIsucariAPIKey,
-			Price:  targetItem.Price,
-		})
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
-			tx.Rollback()
-			return
-		}
-		if pstr.Status == "invalid" {
-			outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
-			tx.Rollback()
-			return
-		}
-		if pstr.Status == "fail" {
-			outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
-			tx.Rollback()
-			return
-		}
-		if pstr.Status != "ok" {
-			outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
-			tx.Rollback()
-			return
-		}
-
-		_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-			transactionEvidenceID,
-			ShippingsStatusInitial,
-			targetItem.Name,
-			targetItem.ID,
-			scr.ReserveID,
-			scr.ReserveTime,
-			buyer.Address,
-			buyer.AccountName,
-			seller.Address,
-			seller.AccountName,
-			"",
-		)
-		if err != nil {
-			log.Print(err)
-
-			outputErrorMsg(w, http.StatusInternalServerError, "db error6")
-			tx.Rollback()
-			return
-		}
-
-		tx.Commit()
-		smtx.Store(strItemId, true)
-		w.Header().Set("Content-Type", "application/json;charset=utf-8")
-		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
-
+	scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
+		ToAddress:   buyer.Address,
+		ToName:      buyer.AccountName,
+		FromAddress: seller.Address,
+		FromName:    seller.AccountName,
 	})
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+		tx.Rollback()
+		return
+	}
+	// HERE
+	// NOTE:
+	// {お金がない人:1,お金がある人:2} -> 2 が変えなくてつらい
+	// まあでもいけるやろ
+	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
+		ShopID: PaymentServiceIsucariShopID,
+		Token:  rb.Token,
+		APIKey: PaymentServiceIsucariAPIKey,
+		Price:  targetItem.Price,
+	})
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
+		tx.Rollback()
+		return
+	}
+	if pstr.Status == "invalid" {
+		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
+		tx.Rollback()
+		return
+	}
+	if pstr.Status == "fail" {
+		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
+		tx.Rollback()
+		return
+	}
+	if pstr.Status != "ok" {
+		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+		transactionEvidenceID,
+		ShippingsStatusInitial,
+		targetItem.Name,
+		targetItem.ID,
+		scr.ReserveID,
+		scr.ReserveTime,
+		buyer.Address,
+		buyer.AccountName,
+		seller.Address,
+		seller.AccountName,
+		"",
+	)
+	if err != nil {
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error6")
+		tx.Rollback()
+		return
+	}
+
+	tx.Commit()
+	// smtx.Store(strItemId, true)
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
+
+	// })
 }
 
 func postShip(w http.ResponseWriter, r *http.Request) {
