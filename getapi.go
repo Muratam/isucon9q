@@ -227,23 +227,24 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemSimples := []ItemSimple{}
-	// keys := make([]string, 0)
-	// for _, item := range items {
-	// 	sellerIdStr := strconv.Itoa(int(item.SellerID))
-	// 	keys = append(keys, sellerIdStr)
-	// }
-	// values := smUserServer.MultiLoad(keys)
+	keys := make([]string, 0)
 	for _, item := range items {
+		sellerIdStr := strconv.Itoa(int(item.SellerID))
+		keys = append(keys, sellerIdStr)
+	}
+	log.Println("keys:", keys)
+	values := smUserServer.MultiLoad(keys)
+	for i, item := range items {
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
-		// value := values[i]
-		// DecodeFromBytes(value, &seller)
 		var seller User
-		sellerIdStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIdStr, &seller)
+		value := values[i]
+		DecodeFromBytes(value, &seller)
+		// sellerIdStr := strconv.Itoa(int(item.SellerID))
+		// smUserServer.Load(sellerIdStr, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
 		simpleSeller.AccountName = seller.AccountName
