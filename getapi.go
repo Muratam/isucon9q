@@ -548,7 +548,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	wg.Done()
+	wg.Wait()
 
 	tx.Commit()
 
