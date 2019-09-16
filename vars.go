@@ -2,6 +2,7 @@ package main
 
 import (
 	"html/template"
+	"sync"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -62,3 +63,5 @@ var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884
 
 // itemid (string) -> isSold(bool) ()
 var smItemPostBuyIsLockedServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8886", isMasterServerIP, DefaultSendCustomFunction)
+
+var postBuyLock = sync.Mutex{}

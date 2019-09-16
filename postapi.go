@@ -210,7 +210,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postBuy", rb.ItemID)
+	postBuyLock.Lock()
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? -- postBuy", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
@@ -265,8 +266,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusForbidden, "db duplicate error")
 		tx.Rollback()
 		return
 	}
