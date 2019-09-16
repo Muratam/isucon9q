@@ -462,45 +462,46 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
-	userSimples, err := getUserSimples(tx)
+
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
+	// TODO: USER ( n + 1 )
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
-		seller, ok := userSimples[item.SellerID]
-		if !ok {
+		sellerId := strconv.Itoa(int(item.SellerID))
+		if !smUserServer.Exists(sellerId) {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
 			return
 		}
+		var seller User
+		smUserServer.Load(sellerId, &seller)
 		category, err := getCategoryByID(tx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			tx.Rollback()
 			return
 		}
-
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemDetail := ItemDetail{
-			ID:       item.ID,
-			SellerID: item.SellerID,
-			Seller:   &seller,
-			// BuyerID
-			// Buyer
+			ID:          item.ID,
+			SellerID:    item.SellerID,
+			Seller:      &simpleSeller,
 			Status:      item.Status,
 			Name:        item.Name,
 			Price:       item.Price,
 			Description: item.Description,
 			ImageURL:    getImageURL(item.ImageName),
 			CategoryID:  item.CategoryID,
-			// TransactionEvidenceID
-			// TransactionEvidenceStatus
-			// ShippingStatus
-			Category:  &category,
-			CreatedAt: item.CreatedAt.Unix(),
+			Category:    &category,
+			CreatedAt:   item.CreatedAt.Unix(),
 		}
 
 		if item.BuyerID != 0 {
