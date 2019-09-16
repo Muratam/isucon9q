@@ -838,6 +838,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
 		return
 	}
 
@@ -846,6 +847,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
 		return
 	}
 
@@ -854,6 +856,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
 		return
 	}
 
@@ -867,6 +870,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
 		return
 	}
 	tx.Commit()
