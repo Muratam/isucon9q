@@ -139,7 +139,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx := dbx.MustBegin()
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postItemEdit", itemID)
 	if err != nil {
 		log.Print(err)
 
@@ -210,7 +210,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", rb.ItemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postBuy", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
@@ -218,8 +218,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusForbidden, "db lock error")
 		tx.Rollback()
 		return
 	}
@@ -610,7 +609,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 
 	tx := dbx.MustBegin()
 	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE  -- postComplete", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "items not found")
 		tx.Rollback()
@@ -888,7 +887,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 	smUserServer.StartTransactionWithKey(uidStr, func(smtx *SyncMapServerTransaction) {
 		tx := dbx.MustBegin()
 		targetItem := Item{}
-		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postBump", itemID)
 		if err == sql.ErrNoRows {
 			outputErrorMsg(w, http.StatusNotFound, "item not found")
 			tx.Rollback()
