@@ -206,59 +206,53 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
-	// 1つめのクエリは飛ばせる
+
+	tx := dbx.MustBegin()
+
 	targetItem := Item{}
-	err = dbx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", rb.ItemID)
+	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
+		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error1")
-	}
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "item not found")
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
 		return
 	}
+
 	if targetItem.Status != ItemStatusOnSale {
-		outputErrorMsg(w, http.StatusForbidden, "item is not for sale1")
+		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+		tx.Rollback()
 		return
 	}
+
 	if targetItem.SellerID == buyer.ID {
 		outputErrorMsg(w, http.StatusForbidden, "自分の商品は買えません")
+		tx.Rollback()
 		return
 	}
+
 	seller := User{}
 	sellerIDStr := strconv.Itoa(int(targetItem.SellerID))
 	if !smUserServer.Exists(sellerIDStr) {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
+		tx.Rollback()
 		return
 	}
 	smUserServer.Load(sellerIDStr, &seller)
-	category, err := getCategoryByID(dbx, targetItem.CategoryID)
+	category, err := getCategoryByID(tx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
+
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
+		tx.Rollback()
 		return
 	}
 
-	// strItemId := strconv.Itoa(int(rb.ItemID))
-	// if !smItemPostBuyIsLockedServer.Exists(strItemId) {
-	// 	smItemPostBuyIsLockedServer.Store(strItemId, false)
-	// }
-	// if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
-	// 	outputErrorMsg(w, http.StatusForbidden, "item is not for sale2")
-	// 	return
-	// }
-	// smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(smtx *SyncMapServerTransaction) {
-	// 	isSoldOut := false
-	// 	smtx.Load(strItemId, &isSoldOut)
-	// 	if isSoldOut {
-	// 		outputErrorMsg(w, http.StatusForbidden, "item is not for sale3")
-	// 		return
-	// 	}
-	tx := dbx.MustBegin()
 	result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		targetItem.SellerID,
 		buyer.ID,
@@ -272,7 +266,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error()+err.Error())
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -281,7 +276,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error4")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -295,7 +290,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error5")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -310,12 +305,10 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
 		tx.Rollback()
+
 		return
 	}
-	// HERE
-	// NOTE:
-	// {お金がない人:1,お金がある人:2} -> 2 が変えなくてつらい
-	// まあでもいけるやろ
+
 	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
 		ShopID: PaymentServiceIsucariShopID,
 		Token:  rb.Token,
@@ -324,20 +317,24 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Print(err)
+
 		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
 		tx.Rollback()
 		return
 	}
+
 	if pstr.Status == "invalid" {
 		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
 		tx.Rollback()
 		return
 	}
+
 	if pstr.Status == "fail" {
 		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
 		tx.Rollback()
 		return
 	}
+
 	if pstr.Status != "ok" {
 		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 		tx.Rollback()
@@ -360,17 +357,15 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error6")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
 
 	tx.Commit()
-	// smtx.Store(strItemId, true)
+
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
-
-	// })
 }
 
 func postShip(w http.ResponseWriter, r *http.Request) {
