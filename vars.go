@@ -56,5 +56,5 @@ var isMasterServerIP = IsMasterServerIP()
 var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884", isMasterServerIP, DefaultSendCustomFunction)
 var accountNameToIDServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8885", isMasterServerIP, DefaultSendCustomFunction)
 
-// itemid (string) -> islocked(bool) ()
+// itemid (string) -> isSold(bool) ()
 var smItemPostBuyIsLockedServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8886", isMasterServerIP, DefaultSendCustomFunction)

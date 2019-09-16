@@ -236,13 +236,19 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 	strItemId := strconv.Itoa(int(rb.ItemID))
 	if !smItemPostBuyIsLockedServer.Exists(strItemId) {
-		smItemPostBuyIsLockedServer.Store(strItemId, true)
+		smItemPostBuyIsLockedServer.Store(strItemId, false)
 	}
 	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
 		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
 		return
 	}
-	smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(this *SyncMapServerTransaction) {
+	smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(smtx *SyncMapServerTransaction) {
+		isSoldOut := false
+		smtx.Load(strItemId, &isSoldOut)
+		if isSoldOut {
+			outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+			return
+		}
 		tx := dbx.MustBegin()
 		result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			targetItem.SellerID,
@@ -351,6 +357,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		}
 
 		tx.Commit()
+		smtx.Store(strItemId, true)
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
 
