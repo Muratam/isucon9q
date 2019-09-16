@@ -73,13 +73,13 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items := []ItemWithUserSimple{}
+	items := []Item{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.timedateid < ? ORDER BY i.timedateid DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
-			time.Unix(createdAt, 0).Format("20060102150405") + fmt.Sprintf("%08d", itemID),
+			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
 			ItemsPerPage+1,
 		)
 		if err != nil {
@@ -90,7 +90,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? ORDER BY i.timedateid DESC LIMIT ?",
+			"SELECT * FROM items WHERE status = ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemsPerPage+1,
 		)
@@ -103,16 +103,22 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		seller := item.Seller
+		var seller User
+		sellerIDStr := strconv.Itoa(int(item.SellerID))
+		smUserServer.Load(sellerIDStr, &seller)
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &seller,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
@@ -183,13 +189,13 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 
 	var inQuery string
 	var inArgs []interface{}
+
 	if itemID > 0 && createdAt > 0 {
 		// paging
-		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) AND i.timedateid < ? ORDER BY i.timedateid DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
-			time.Unix(createdAt, 0).Format("20060102150405") + fmt.Sprintf("%08d", itemID),
+			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
 			ItemsPerPage+1,
 		)
 		if err != nil {
@@ -199,8 +205,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 1st page
-		inQuery, inArgs, err = sqlx.In(
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND i.category_id IN (?) ORDER BY i.timedateid DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
 			ItemsPerPage+1,
@@ -212,7 +217,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items := []ItemWithUserSimple{}
+	items := []Item{}
 	err = dbx.Select(&items, inQuery, inArgs...)
 
 	if err != nil {
@@ -222,17 +227,31 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemSimples := []ItemSimple{}
+	// keys := make([]string, 0)
+	// for _, item := range items {
+	// 	sellerIdStr := strconv.Itoa(int(item.SellerID))
+	// 	keys = append(keys, sellerIdStr)
+	// }
+	// values := smUserServer.MultiLoad(keys)
 	for _, item := range items {
-		seller := item.Seller
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
+		// value := values[i]
+		// DecodeFromBytes(value, &seller)
+		var seller User
+		sellerIdStr := strconv.Itoa(int(item.SellerID))
+		smUserServer.Load(sellerIdStr, &seller)
+		var simpleSeller UserSimple
+		simpleSeller.ID = seller.ID
+		simpleSeller.AccountName = seller.AccountName
+		simpleSeller.NumSellItems = seller.NumSellItems
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &seller,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
@@ -331,8 +350,14 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	itemSimples := []ItemSimple{}
+	var seller User
+	var simpleSeller UserSimple
+	sellerIdStr := strconv.Itoa(int(userSimple.ID))
+	smUserServer.Load(sellerIdStr, &seller)
+	simpleSeller.ID = seller.ID
+	simpleSeller.AccountName = seller.AccountName
+	simpleSeller.NumSellItems = seller.NumSellItems
 	for _, item := range items {
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
@@ -342,7 +367,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		itemSimples = append(itemSimples, ItemSimple{
 			ID:         item.ID,
 			SellerID:   item.SellerID,
-			Seller:     &userSimple,
+			Seller:     &simpleSeller,
 			Status:     item.Status,
 			Name:       item.Name,
 			Price:      item.Price,
