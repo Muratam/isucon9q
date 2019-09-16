@@ -87,11 +87,12 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := []Item{}
+	var inQuery string
+	var inArgs []interface{}
+
 	if itemID > 0 && createdAt > 0 {
 		// paging
-		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? AND timedateid < ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND timedateid < ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
 			categoryIDs,
@@ -104,8 +105,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 1st page
-		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
 			ItemsPerPage+1,
@@ -116,6 +116,15 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	items := []Item{}
+	err = dbx.Select(&items, inQuery, inArgs...)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+		return
+	}
+
 
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
@@ -241,7 +250,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
-
+	
 	itemSimples := []ItemSimple{}
 	// keys := make([]string, 0)
 	// for _, item := range items {
