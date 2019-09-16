@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -832,7 +833,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			category.ID,
 			now,
 			now,
-			"",
+			strconv.Itoa(rand.Int()),
 		)
 		if err != nil {
 			log.Print(err)
