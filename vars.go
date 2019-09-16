@@ -41,7 +41,8 @@ const (
 	ItemsPerPage        = 48
 	TransactionsPerPage = 10
 
-	BcryptCost = 10
+	BcryptCost          = 4
+	MasterServerAddress = "172.24.122.183"
 )
 
 var (
@@ -49,3 +50,8 @@ var (
 	dbx       *sqlx.DB
 	store     sessions.Store
 )
+
+// とりあえず plain password だけを管理するサーバー(ID/AccountName/PlainPassword以外の情報は嘘)
+var isMasterServerIP = IsMasterServerIP()
+var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884", isMasterServerIP, DefaultSendCustomFunction)
+var accountNameToIDServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8885", isMasterServerIP, DefaultSendCustomFunction)
