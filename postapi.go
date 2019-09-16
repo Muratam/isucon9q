@@ -20,25 +20,18 @@ import (
 func initializeUsersDB() {
 	smUserServer.ClearAll()
 	accountNameToIDServer.ClearAll()
-	// 初期データ4000件全部DBから取得して構成
-	rows, err := dbx.Query("SELECT * FROM `users`")
+	users := make([]User, 0)
+	err := dbx.Select(&users, "SELECT * FROM `users`")
 	if err != nil {
 		panic(err)
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var u User
-		err := rows.Scan(&u)
-		if err != nil {
-			panic(err)
-		}
+	for _, u := range users {
 		u.PlainPassword = userIdToPlainPassword[int(u.ID)]
 		uidStr := strconv.Itoa(int(u.ID))
 		name := u.AccountName
 		smUserServer.Store(uidStr, u)
 		accountNameToIDServer.Store(name, uidStr)
 	}
-
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
