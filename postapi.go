@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -54,10 +55,20 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	if isMasterServerIP {
+		smUserServer.ClearAll()
+		accountNameToIDServer.ClearAll()
+		for _, u := range usersForPlainPassword {
+			id := strconv.Itoa(int(u.ID))
+			name := u.AccountName
+			smUserServer.Store(id, u)
+			accountNameToIDServer.Store(name, id)
+		}
+	}
 
 	res := resInitialize{
 		// キャンペーン実施時には還元率の設定を返す。詳しくはマニュアルを参照のこと。
-		Campaign: 0,
+		Campaign: 2,
 		// 実装言語を返す
 		Language: "Go",
 	}
@@ -212,7 +223,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", targetItem.SellerID)
+	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ?", targetItem.SellerID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		tx.Rollback()
@@ -375,54 +386,24 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+
+	tx := dbx.MustBegin()
+
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
+		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-
+		tx.Rollback()
 		return
 	}
 
 	if transactionEvidence.SellerID != seller.ID {
 		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		return
-	}
-
-	tx := dbx.MustBegin()
-
-	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "item not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	if item.Status != ItemStatusTrading {
-		outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -505,55 +486,24 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx := dbx.MustBegin()
+
 	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? FOR UPDATE", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
+		tx.Rollback()
 		return
 	}
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-
+		tx.Rollback()
 		return
 	}
 
 	if transactionEvidence.SellerID != seller.ID {
 		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		return
-	}
-
-	tx := dbx.MustBegin()
-
-	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "items not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	if item.Status != ItemStatusTrading {
-		outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -651,24 +601,6 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-
-		return
-	}
-
-	if transactionEvidence.BuyerID != buyer.ID {
-		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		return
-	}
-
 	tx := dbx.MustBegin()
 	item := Item{}
 	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
@@ -690,6 +622,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	transactionEvidence := TransactionEvidence{}
 	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? FOR UPDATE", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
@@ -699,6 +632,12 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+
+	if transactionEvidence.BuyerID != buyer.ID {
+		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
 		tx.Rollback()
 		return
 	}
@@ -1040,46 +979,35 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 
 	if accountName == "" || password == "" {
 		outputErrorMsg(w, http.StatusBadRequest, "all parameters are required")
-
 		return
 	}
-
-	u := User{}
-	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
-	if err == sql.ErrNoRows {
+	if !accountNameToIDServer.Exists(accountName) {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
-	if err == bcrypt.ErrMismatchedHashAndPassword {
+	idStr := ""
+	accountNameToIDServer.Load(accountName, &idStr)
+	up := UserForPlainPassword{}
+	smUserServer.Load(idStr, &up)
+	if strings.Compare(up.PlainPassword, password) != 0 {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "crypt error")
-		return
-	}
-
 	session := getSession(r)
-
-	session.Values["user_id"] = u.ID
+	session.Values["user_id"] = up.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
 		return
 	}
-
+	u := User{}
+	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(u)
 }
@@ -1102,7 +1030,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 4)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		log.Print(err)
 
@@ -1136,6 +1064,14 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		AccountName: accountName,
 		Address:     address,
 	}
+	up := UserForPlainPassword{
+		AccountName:   accountName,
+		ID:            u.ID,
+		PlainPassword: password,
+	}
+	idStr := strconv.Itoa(int(up.ID))
+	smUserServer.Store(idStr, up)
+	accountNameToIDServer.Store(up.AccountName, idStr)
 
 	session := getSession(r)
 	session.Values["user_id"] = u.ID
