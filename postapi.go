@@ -234,29 +234,6 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
 		return
 	}
-	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
-		ShopID: PaymentServiceIsucariShopID,
-		Token:  rb.Token,
-		APIKey: PaymentServiceIsucariAPIKey,
-		Price:  targetItem.Price,
-	})
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
-		return
-	}
-	if pstr.Status == "invalid" {
-		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
-		return
-	}
-	if pstr.Status == "fail" {
-		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
-		return
-	}
-	if pstr.Status != "ok" {
-		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
-		return
-	}
 
 	strItemId := strconv.Itoa(int(rb.ItemID))
 	if !smItemPostBuyIsLockedServer.Exists(strItemId) {
@@ -344,9 +321,37 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			tx.Rollback()
 			return
 		}
-
+		// NOTE:
+		// {お金がない人:1,お金がある人:2} -> 2 が変えなくてつらい
+		// まあでもいけるやろ
+		pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
+			ShopID: PaymentServiceIsucariShopID,
+			Token:  rb.Token,
+			APIKey: PaymentServiceIsucariAPIKey,
+			Price:  targetItem.Price,
+		})
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
+			tx.Rollback()
+			return
+		}
+		if pstr.Status == "invalid" {
+			outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
+			tx.Rollback()
+			return
+		}
+		if pstr.Status == "fail" {
+			outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
+			tx.Rollback()
+			return
+		}
+		if pstr.Status != "ok" {
+			outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
+			tx.Rollback()
+			return
+		}
 		tx.Commit()
-
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
 
