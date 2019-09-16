@@ -207,6 +207,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	time.Sleep(time.Duration(rand.Int63n(1000)) * time.Nanosecond)
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
@@ -295,71 +296,97 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
-		ToAddress:   buyer.Address,
-		ToName:      buyer.AccountName,
-		FromAddress: seller.Address,
-		FromName:    seller.AccountName,
-	})
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-		tx.Rollback()
-
-		return
+	type ScrErr struct {
+		scr *APIShipmentCreateRes
+		err error
 	}
 
-	pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
-		ShopID: PaymentServiceIsucariShopID,
-		Token:  rb.Token,
-		APIKey: PaymentServiceIsucariAPIKey,
-		Price:  targetItem.Price,
-	})
-	if err != nil {
-		log.Print(err)
+	chScrErr := make(chan ScrErr, 1)
+	go func() {
+		scr, err := APIShipmentCreate(getShipmentServiceURL(), &APIShipmentCreateReq{
+			ToAddress:   buyer.Address,
+			ToName:      buyer.AccountName,
+			FromAddress: seller.Address,
+			FromName:    seller.AccountName,
+		})
+		chScrErr <- ScrErr{scr, err}
+	}()
 
-		outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
-		tx.Rollback()
-		return
+	type PstrErr struct {
+		pstr *APIPaymentServiceTokenRes
+		err error
 	}
 
-	if pstr.Status == "invalid" {
-		outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
-		tx.Rollback()
-		return
-	}
+	chPstrErr := make(chan PstrErr, 1)
+	go func() {
+		pstr, err := APIPaymentToken(getPaymentServiceURL(), &APIPaymentServiceTokenReq{
+			ShopID: PaymentServiceIsucariShopID,
+			Token:  rb.Token,
+			APIKey: PaymentServiceIsucariAPIKey,
+			Price:  targetItem.Price,
+		})
+		chPstrErr <- PstrErr{pstr, err}
+	}()
 
-	if pstr.Status == "fail" {
-		outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
-		tx.Rollback()
-		return
-	}
+	for i := 0; i < 2; i++ {
+		select {
+		case scrErr := <- chScrErr:
+			scr, err := scrErr.scr, scrErr.err
+			if err != nil {
+				log.Print(err)
+				outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+				tx.Rollback()
+				return
+			}
 
-	if pstr.Status != "ok" {
-		outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
-		tx.Rollback()
-		return
-	}
-
-	_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-		transactionEvidenceID,
-		ShippingsStatusInitial,
-		targetItem.Name,
-		targetItem.ID,
-		scr.ReserveID,
-		scr.ReserveTime,
-		buyer.Address,
-		buyer.AccountName,
-		seller.Address,
-		seller.AccountName,
-		"",
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
+			_, err = tx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+				transactionEvidenceID,
+				ShippingsStatusInitial,
+				targetItem.Name,
+				targetItem.ID,
+				scr.ReserveID,
+				scr.ReserveTime,
+				buyer.Address,
+				buyer.AccountName,
+				seller.Address,
+				seller.AccountName,
+				"",
+			)
+			if err != nil {
+				log.Print(err)
+		
+				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				tx.Rollback()
+				return
+			}
+		case pstrErr := <- chPstrErr:
+			pstr, err := pstrErr.pstr, pstrErr.err
+			if err != nil {
+				log.Print(err)
+		
+				outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
+				tx.Rollback()
+				return
+			}
+		
+			if pstr.Status == "invalid" {
+				outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
+				tx.Rollback()
+				return
+			}
+		
+			if pstr.Status == "fail" {
+				outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
+				tx.Rollback()
+				return
+			}
+		
+			if pstr.Status != "ok" {
+				outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
+				tx.Rollback()
+				return
+			}
+		}
 	}
 
 	tx.Commit()
