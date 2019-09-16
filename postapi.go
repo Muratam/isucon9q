@@ -222,7 +222,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetItem.Status != ItemStatusOnSale {
-		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+		outputErrorMsg(w, http.StatusForbidden, "item is not for sale1")
 		return
 	}
 	if targetItem.SellerID == buyer.ID {
@@ -255,7 +255,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		isSoldOut := false
 		smtx.Load(strItemId, &isSoldOut)
 		if isSoldOut {
-			outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+			outputErrorMsg(w, http.StatusForbidden, "item is not for sale3")
 			return
 		}
 		tx := dbx.MustBegin()

@@ -42,7 +42,7 @@ const (
 	TransactionsPerPage = 10
 
 	BcryptCost          = 4
-	MasterServerAddress = "172.24.122.183"
+	MasterServerAddress = "172.24.122.186"
 )
 
 var (
