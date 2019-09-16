@@ -80,7 +80,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var categoryIDs []int
-	err = dbx.Select(&categoryIDs, "SELECT category_id FROM items WHERE buyer_id=?", user.ID)
+	err = dbx.Select(&categoryIDs, "SELECT a.id FROM categories a INNER JOIN categories b ON a.parent_id = b.parent_id INNER JOIN items i ON i.category_id = b.id WHERE i.buyer_id=? GROUP BY a.id", user.ID)
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
@@ -250,7 +250,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
-	
+
 	itemSimples := []ItemSimple{}
 	// keys := make([]string, 0)
 	// for _, item := range items {
