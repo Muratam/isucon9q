@@ -241,6 +241,10 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		value := values[i]
+		if len(value) == 0 {
+			outputErrorMsg(w, http.StatusNotFound, "seller on sm not found")
+			return
+		}
 		DecodeFromBytes(value, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
@@ -363,6 +367,11 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		value := values[i]
+		if len(value) == 0 {
+			outputErrorMsg(w, http.StatusNotFound, "seller on sm not found")
+			return
+		}
+
 		DecodeFromBytes(value, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
