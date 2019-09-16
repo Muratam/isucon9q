@@ -414,8 +414,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND `status` IN (?,?,?,?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"Select * from `items` where seller_id = ? and `status` in (?,?,?,?,?) and (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) union select * from `items` where buyer_id = ?and `status` in (?,?,?,?,?) and (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) order by `created_at desc, `id` desc limit ?",
 			user.ID,
+			ItemStatusOnSale,
+			ItemStatusTrading,
+			ItemStatusSoldOut,
+			ItemStatusCancel,
+			ItemStatusStop,
+			time.Unix(createdAt, 0),
+			time.Unix(createdAt, 0),
+			itemID,
 			user.ID,
 			ItemStatusOnSale,
 			ItemStatusTrading,
@@ -436,8 +444,13 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND `status` IN (?,?,?,?,?) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"Select * from `items` where seller_id = ? and `status` in (?,?,?,?,?)  union select * from `items` where buyer_id = ? and `status` in (?,?,?,?,?) order by `created_at desc, `id` desc limit ?",
 			user.ID,
+			ItemStatusOnSale,
+			ItemStatusTrading,
+			ItemStatusSoldOut,
+			ItemStatusCancel,
+			ItemStatusStop,
 			user.ID,
 			ItemStatusOnSale,
 			ItemStatusTrading,
@@ -569,7 +582,6 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusBadRequest, "incorrect item id")
 		return
 	}
-
 
 	session := getSession(r)
 	userID, ok := session.Values["user_id"]
