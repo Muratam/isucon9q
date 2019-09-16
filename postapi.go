@@ -142,6 +142,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if affected == 0 {
+		log.Println("postItemEdit: affected == 0")
 		if targetItem.Status != ItemStatusOnSale {
 			outputErrorMsg(w, http.StatusForbidden, "販売中の商品以外編集できません")
 			tx.Rollback()
@@ -597,6 +598,14 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 
 	tx := dbx.MustBegin()
 
+	item := Item{}
+	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ?", itemID)
+	if err == sql.ErrNoRows {
+		outputErrorMsg(w, http.StatusNotFound, "items not found")
+		tx.Rollback()
+		return
+	}
+
 	shipping := Shipping{}
 	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `item_id` = ? FOR UPDATE", itemID)
 	if err != nil {
@@ -697,13 +706,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if affected == 0 {
-		item := Item{}
-		err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ?", itemID)
-		if err == sql.ErrNoRows {
-			outputErrorMsg(w, http.StatusNotFound, "items not found")
-			tx.Rollback()
-			return
-		}
+		log.Println("postComplete: affected == 0")
 		if err != nil {
 			log.Print(err)
 			outputErrorMsg(w, http.StatusInternalServerError, "db error")
