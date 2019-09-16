@@ -58,6 +58,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	if isMasterServerIP {
 		smUserServer.ClearAll()
 		accountNameToIDServer.ClearAll()
+		smItemPostBuyIsLockedServer.ClearAll()
 		for _, u := range usersForPlainPassword {
 			id := strconv.Itoa(int(u.ID))
 			name := u.AccountName
