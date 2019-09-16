@@ -259,7 +259,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	strItemId := strconv.Itoa(int(rb.ItemID))
-	if smItemPostBuyIsLockedServer.Exists(strItemId) {
+	if !smItemPostBuyIsLockedServer.Exists(strItemId) {
 		smItemPostBuyIsLockedServer.Store(strItemId, true)
 	}
 	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
