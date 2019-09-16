@@ -120,6 +120,9 @@ func DecodeFromBytes(bytes_ []byte, x interface{}) {
 	dec := gob.NewDecoder(&buf)
 	err := dec.Decode(x)
 	if err != nil {
+		log.Println("PARSE ERRR|OR:")
+		log.Println(len(bytes_), ":", bytes_)
+		log.Println(x)
 		log.Panic(err)
 	}
 }
