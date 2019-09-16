@@ -62,6 +62,16 @@ func getShipmentServiceURL() string {
 	return val
 }
 
+func getUserSimples(q sqlx.Queryer) (userSimples map[int64]UserSimple, err error) {
+	tmp := []UserSimple{}
+	userSimples = map[int64]UserSimple{}
+	err = sqlx.Select(q, &tmp, "SELECT id, account_name, num_sell_items  FROM `users`")
+	for _, v := range tmp {
+		userSimples[v.ID] = v
+	}
+	return userSimples, err
+}
+
 func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err error) {
 	user := User{}
 	err = sqlx.Get(q, &user, "SELECT * FROM `users` WHERE `id` = ?", userID)
