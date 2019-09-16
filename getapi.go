@@ -205,7 +205,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 1st page
-		inQuery, inArgs, err = sqlx.In("SELECT i FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
+		inQuery, inArgs, err = sqlx.In("SELECT * FROM items WHERE status = ? AND category_id IN (?) ORDER BY timedateid DESC LIMIT ?",
 			ItemStatusOnSale,
 			categoryIDs,
 			ItemsPerPage+1,
