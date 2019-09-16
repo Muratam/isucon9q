@@ -445,7 +445,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
 	for i, item := range items {
-		wg.Add(1)
 		chans[i] = make(chan string, 1)
 		seller, err := getUserSimpleByID(tx, item.SellerID)
 		if err != nil {
@@ -515,6 +514,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			ssrStatus := shipping.Status
+			wg.Add(1)
 			if ssrStatus != ShippingsStatusDone {
 				go func(i int) {
 					ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
