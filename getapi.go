@@ -441,7 +441,13 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemDetails := []ItemDetail{}
-	userSimples, _ := getUserSimples(tx)
+	userSimples, err := getUserSimples(tx)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
 	for _, item := range items {
 		seller, ok := userSimples[item.SellerID]
 		if !ok {
