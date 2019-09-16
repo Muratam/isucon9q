@@ -821,7 +821,8 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		tx := dbx.MustBegin()
 		seller := User{}
 		smtx.Load(strUserId, &seller)
-		result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		now := time.Now().Truncate(time.Second)
+		result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			seller.ID,
 			ItemStatusOnSale,
 			name,
@@ -829,23 +830,30 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			description,
 			imgName,
 			category.ID,
+			now,
+			now,
+			"",
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			// なぜか tx.RollBack() がない
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
 			return
 		}
-
 		itemID, err := result.LastInsertId()
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			// なぜか tx.RollBack() がない
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
 			return
 		}
-
-		now := time.Now()
+		_, err = tx.Exec("UPDATE `items` SET `timedateid`=? WHERE `id`=?", now.Format("20060102150405")+fmt.Sprintf("%08d", itemID), itemID)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
 		seller.NumSellItems += 1
 		seller.LastBump = now
 		smtx.Store(strUserId, seller)
@@ -892,44 +900,48 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
 			tx.Rollback()
 			return
 		}
+
 		if targetItem.SellerID != user.ID {
 			outputErrorMsg(w, http.StatusForbidden, "自分の商品以外は編集できません")
 			tx.Rollback()
 			return
 		}
+
 		seller := User{}
 		smtx.Load(uidStr, &seller)
-		now := time.Now()
+		now := time.Now().Truncate(time.Second)
 		// last_bump + 3s > now
 		if seller.LastBump.Add(BumpChargeSeconds).After(now) {
 			outputErrorMsg(w, http.StatusForbidden, "Bump not allowed")
 			tx.Rollback()
 			return
 		}
-		_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=? WHERE id=?",
+		_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=?, `timedateid`=? WHERE id=?",
 			now,
 			now,
+			now.Format("20060102150405")+fmt.Sprintf("%08d", targetItem.ID),
 			targetItem.ID,
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
 			return
 		}
 		seller.LastBump = now
 		smtx.Store(uidStr, seller)
-		// TODO: この下は整合性がやばいかも？
+		// WARN: 整合性大丈夫かな....？
 		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
 			tx.Rollback()
 			return
 		}
+
 		tx.Commit()
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(&resItemEdit{
