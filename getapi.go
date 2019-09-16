@@ -410,8 +410,11 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"SELECT * FROM (select * from `items` WHERE `seller_id` = ? AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) union select * from `items` where `buyer_id` = ? AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?))) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
+			time.Unix(createdAt, 0),
+			time.Unix(createdAt, 0),
+			itemID,
 			user.ID,
 			time.Unix(createdAt, 0),
 			time.Unix(createdAt, 0),
@@ -427,7 +430,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := tx.Select(&items,
-			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
+			"select * from (select * from `items` where seller_id = ? union select * from `items` where buyer_id = ?) order by `created_at` desc, `id` desc limit ?",
 			user.ID,
 			user.ID,
 			TransactionsPerPage+1,
