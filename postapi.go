@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -53,6 +54,16 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
+	}
+	if isMasterServerIP {
+		smUserServer.ClearAll()
+		accountNameToIDServer.ClearAll()
+		for _, u := range usersForPlainPassword {
+			id := strconv.Itoa(int(u.ID))
+			name := u.AccountName
+			smUserServer.Store(id, u)
+			accountNameToIDServer.Store(name, id)
+		}
 	}
 
 	res := resInitialize{
@@ -968,46 +979,35 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 
 	if accountName == "" || password == "" {
 		outputErrorMsg(w, http.StatusBadRequest, "all parameters are required")
-
 		return
 	}
-
-	u := User{}
-	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
-	if err == sql.ErrNoRows {
+	if !accountNameToIDServer.Exists(accountName) {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	err = bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(password))
-	if err == bcrypt.ErrMismatchedHashAndPassword {
+	idStr := ""
+	accountNameToIDServer.Load(accountName, &idStr)
+	up := UserForPlainPassword{}
+	smUserServer.Load(idStr, &up)
+	if strings.Compare(up.PlainPassword, password) != 0 {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "crypt error")
-		return
-	}
-
 	session := getSession(r)
-
-	session.Values["user_id"] = u.ID
+	session.Values["user_id"] = up.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
 		return
 	}
-
+	u := User{}
+	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(u)
 }
@@ -1030,7 +1030,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 4)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		log.Print(err)
 
@@ -1064,6 +1064,14 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		AccountName: accountName,
 		Address:     address,
 	}
+	up := UserForPlainPassword{
+		AccountName:   accountName,
+		ID:            u.ID,
+		PlainPassword: password,
+	}
+	idStr := strconv.Itoa(int(up.ID))
+	smUserServer.Store(idStr, up)
+	accountNameToIDServer.Store(up.AccountName, idStr)
 
 	session := getSession(r)
 	session.Values["user_id"] = u.ID
