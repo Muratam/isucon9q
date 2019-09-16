@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -248,7 +248,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		smItemPostBuyIsLockedServer.Store(strItemId, false)
 	}
 	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
-		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+		outputErrorMsg(w, http.StatusForbidden, "item is not for sale2")
 		return
 	}
 	smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(smtx *SyncMapServerTransaction) {
