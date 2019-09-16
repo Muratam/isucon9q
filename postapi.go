@@ -207,6 +207,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	time.Sleep(time.Duration(rand.Int63n(1000)) * time.Nanosecond)
 	tx := dbx.MustBegin()
 
 	targetItem := Item{}
