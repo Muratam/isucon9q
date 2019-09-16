@@ -37,7 +37,7 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 		return user, http.StatusNotFound, "no session"
 	}
 	// TODO: 型が合ってる？？？
-	userIDStr := string(userID.(int64))
+	userIDStr := strconv.Itoa(int(userID.(int64)))
 	if !smUserServer.Exists(userIDStr) {
 		return user, http.StatusNotFound, "user not found"
 	}
