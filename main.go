@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
 	"html/template"
 	"log"
@@ -30,6 +31,10 @@ func init() {
 }
 
 func main() {
+	gob.Register(User{})
+	gob.Register([]User{})
+	gob.Register([]byte{})
+	gob.Register([][]byte{})
 	go func() { log.Println(http.ListenAndServe(":9876", nil)) }()
 	host := os.Getenv("MYSQL_HOST")
 	if host == "" {
