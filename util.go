@@ -4,9 +4,11 @@ import (
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -64,10 +66,11 @@ func getShipmentServiceURL() string {
 
 func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err error) {
 	user := User{}
-	err = sqlx.Get(q, &user, "SELECT * FROM `users` WHERE `id` = ?", userID)
-	if err != nil {
-		return userSimple, err
+	userIDStr := strconv.Itoa(int(userID))
+	if !smUserServer.Exists(userIDStr) {
+		return userSimple, errors.New("no user")
 	}
+	smUserServer.Load(userIDStr, &user)
 	userSimple.ID = user.ID
 	userSimple.AccountName = user.AccountName
 	userSimple.NumSellItems = user.NumSellItems
