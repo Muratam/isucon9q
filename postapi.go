@@ -375,26 +375,10 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-
-		return
-	}
-
-	if transactionEvidence.SellerID != seller.ID {
-		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		return
-	}
 
 	tx := dbx.MustBegin()
 
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `id` = ? FOR UPDATE", transactionEvidence.ID)
+	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 		tx.Rollback()
@@ -403,6 +387,12 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+
+	if transactionEvidence.SellerID != seller.ID {
+		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
 		tx.Rollback()
 		return
 	}
