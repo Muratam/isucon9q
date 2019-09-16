@@ -437,8 +437,8 @@ func (this *SyncMapServerTransaction) Load(key string, res interface{}) bool {
 // Masterなら直に、SlaveならTCPでつないで実行
 // あとでDecodeすること。空なら 空(非nil)。
 func (this *SyncMapServer) multiLoadImpl(keys []string, forceDirect, forceConnection bool) [][]byte {
-	result := make([][]byte, 0)
 	if forceDirect || this.IsOnThisApp() {
+		result := make([][]byte, 0)
 		for _, key := range keys {
 			value, ok := this.SyncMap.Load(key)
 			if !ok {
@@ -449,14 +449,14 @@ func (this *SyncMapServer) multiLoadImpl(keys []string, forceDirect, forceConnec
 		}
 		return result
 	} else { // やっていき
-		loadedBytes := this.send(func() []byte {
-			return join([][]byte{
-				syncMapMultiLoadCommand,
-				EncodeToBytes(keys),
-			})
-		}, forceConnection)
-		DecodeFromBytes(loadedBytes, &result)
-		return result
+		return split(
+			this.send(func() []byte {
+				return join([][]byte{
+					syncMapMultiLoadCommand,
+					EncodeToBytes(keys),
+				})
+			}, forceConnection),
+		)
 	}
 }
 func (this *SyncMapServer) MultiLoad(keys []string) [][]byte {
@@ -983,8 +983,7 @@ func (this *SyncMapServer) interpretWrapFunction(buf []byte) []byte {
 	} else if bytes.Compare(command, syncMapMultiLoadCommand) == 0 {
 		keys := make([]string, 0)
 		DecodeFromBytes(ss[1], &keys)
-		result := this.multiLoadImpl(keys, true, false)
-		return EncodeToBytes(result)
+		return join(this.multiLoadImpl(keys, true, false))
 	} else if bytes.Compare(command, syncMapMultiStoreCommand) == 0 {
 		keys := make([]string, 0)
 		DecodeFromBytes(ss[1], &keys)
