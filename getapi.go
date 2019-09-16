@@ -529,6 +529,10 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		itemDetails = append(itemDetails, itemDetail)
+
+		if len(itemDetails) > TransactionsPerPage {
+			break
+		}
 	}
 	tx.Commit()
 
