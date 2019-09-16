@@ -442,8 +442,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wg := sync.WaitGroup{}
-	itemDetails := make([]ItemDetail, 0, TransactionsPerPage + 1)
-	chans := make([]chan string, 0, TransactionsPerPage + 1)
+	itemDetails := make([]ItemDetail, 0, len(items))
+	chans := make([]chan string, 0, len(items))
 	for i, item := range items {
 		wg.Add(1)
 		chans[i] = make(chan string, 1)
@@ -549,7 +549,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wg.Done()
-	
+
 	tx.Commit()
 
 	hasNext := false
