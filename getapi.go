@@ -85,7 +85,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
@@ -97,7 +97,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
@@ -157,7 +157,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	err = dbx.Select(&categoryIDs, "SELECT id FROM `categories` WHERE parent_id=?", rootCategory.ID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -197,7 +197,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
@@ -210,7 +210,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
@@ -220,7 +220,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -315,7 +315,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	} else {
@@ -330,7 +330,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 	}
@@ -417,7 +417,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -431,7 +431,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -490,7 +490,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err != sql.ErrNoRows {
 			// It's able to ignore ErrNoRows
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -505,7 +505,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 			if err != nil {
 				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 				tx.Rollback()
 				return
 			}
@@ -587,7 +587,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -636,7 +636,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err != sql.ErrNoRows {
 			// It's able to ignore ErrNoRows
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 
@@ -649,7 +649,7 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 			}
 			if err != nil {
 				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 				return
 			}
 
@@ -685,7 +685,7 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -701,7 +701,7 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -737,7 +737,7 @@ func getSettings(w http.ResponseWriter, r *http.Request) {
 	err := dbx.Select(&categories, "SELECT * FROM `categories`")
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	ress.Categories = categories
@@ -751,7 +751,7 @@ func getReports(w http.ResponseWriter, r *http.Request) {
 	err := dbx.Select(&transactionEvidences, "SELECT * FROM `transaction_evidences` WHERE `id` > 15007")
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 

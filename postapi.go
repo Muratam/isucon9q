@@ -59,7 +59,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	_, err = dbx.Exec(
@@ -69,7 +69,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	if isMasterServerIP {
@@ -125,7 +125,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -139,7 +139,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -158,7 +158,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -166,7 +166,7 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -268,7 +268,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error()+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -405,7 +405,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -431,7 +431,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -456,7 +456,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -505,7 +505,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -531,7 +531,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -561,7 +561,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -574,7 +574,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -619,7 +619,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -639,7 +639,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -660,7 +660,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -690,7 +690,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -703,7 +703,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -716,7 +716,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -821,7 +821,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -838,7 +838,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -846,7 +846,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 
@@ -859,7 +859,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Print(err)
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
 	tx.Commit()
@@ -905,7 +905,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
@@ -930,7 +930,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			return
 		}
 		seller.LastBump = now
@@ -939,7 +939,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
 		if err != nil {
 			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 			tx.Rollback()
 			return
 		}
