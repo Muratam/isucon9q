@@ -812,63 +812,47 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "Saving image failed")
 		return
 	}
-
-	tx := dbx.MustBegin()
-
-	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
-	if err == sql.ErrNoRows {
+	strUserId := strconv.Itoa(int(user.ID))
+	if !smUserServer.Exists(strUserId) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
+	smUserServer.StartTransactionWithKey(strUserId, func(smtx *SyncMapServerTransaction) {
+		tx := dbx.MustBegin()
+		seller := User{}
+		smtx.Load(strUserId, &seller)
+		result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			seller.ID,
+			ItemStatusOnSale,
+			name,
+			price,
+			description,
+			imgName,
+			category.ID,
+		)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			// なぜか tx.RollBack() がない
+			return
+		}
 
-	result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		seller.ID,
-		ItemStatusOnSale,
-		name,
-		price,
-		description,
-		imgName,
-		category.ID,
-	)
-	if err != nil {
-		log.Print(err)
+		itemID, err := result.LastInsertId()
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+			// なぜか tx.RollBack() がない
+			return
+		}
 
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
-	itemID, err := result.LastInsertId()
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
-	now := time.Now()
-	_, err = tx.Exec("UPDATE `users` SET `num_sell_items`=?, `last_bump`=? WHERE `id`=?",
-		seller.NumSellItems+1,
-		now,
-		seller.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-	tx.Commit()
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(resSell{ID: itemID})
+		now := time.Now()
+		seller.NumSellItems += 1
+		seller.LastBump = now
+		smtx.Store(strUserId, seller)
+		tx.Commit()
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resSell{ID: itemID})
+	})
 }
 
 func postBump(w http.ResponseWriter, r *http.Request) {
