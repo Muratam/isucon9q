@@ -59,11 +59,23 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		smUserServer.ClearAll()
 		accountNameToIDServer.ClearAll()
 		smItemPostBuyIsLockedServer.ClearAll()
-		for _, u := range usersForPlainPassword {
-			id := strconv.Itoa(int(u.ID))
+		// 初期データ4000件全部DBから取得して構成
+		rows, err := dbx.Query("SELECT * FROM `users`")
+		if err != nil {
+			panic(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var u User
+			err := rows.Scan(&u)
+			if err != nil {
+				panic(err)
+			}
+			u.PlainPassword = userIdToPlainPassword[int(u.ID)]
+			uidStr := strconv.Itoa(int(u.ID))
 			name := u.AccountName
-			smUserServer.Store(id, u)
-			accountNameToIDServer.Store(name, id)
+			smUserServer.Store(uidStr, u)
+			accountNameToIDServer.Store(name, uidStr)
 		}
 	}
 
@@ -216,17 +228,12 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seller := User{}
-	err = dbx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ?", targetItem.SellerID)
-	if err == sql.ErrNoRows {
+	sellerIDStr := strconv.Itoa(int(targetItem.SellerID))
+	if !smUserServer.Exists(sellerIDStr) {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error2")
-		return
-	}
-
+	smUserServer.Load(sellerIDStr, &seller)
 	category, err := getCategoryByID(dbx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
@@ -884,88 +891,68 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
-
-	tx := dbx.MustBegin()
-
-	targetItem := Item{}
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "item not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	if targetItem.SellerID != user.ID {
-		outputErrorMsg(w, http.StatusForbidden, "自分の商品以外は編集できません")
-		tx.Rollback()
-		return
-	}
-
-	seller := User{}
-	err = tx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ? FOR UPDATE", user.ID)
-	if err == sql.ErrNoRows {
+	uidStr := strconv.Itoa(int(user.ID))
+	if !smUserServer.Exists(uidStr) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	now := time.Now()
-	// last_bump + 3s > now
-	if seller.LastBump.Add(BumpChargeSeconds).After(now) {
-		outputErrorMsg(w, http.StatusForbidden, "Bump not allowed")
-		tx.Rollback()
-		return
-	}
-
-	_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=? WHERE id=?",
-		now,
-		now,
-		targetItem.ID,
-	)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	_, err = tx.Exec("UPDATE `users` SET `last_bump`=? WHERE id=?",
-		now,
-		seller.ID,
-	)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	tx.Commit()
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(&resItemEdit{
-		ItemID:        targetItem.ID,
-		ItemPrice:     targetItem.Price,
-		ItemCreatedAt: targetItem.CreatedAt.Unix(),
-		ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
+	smUserServer.StartTransactionWithKey(uidStr, func(smtx *SyncMapServerTransaction) {
+		tx := dbx.MustBegin()
+		targetItem := Item{}
+		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
+		if err == sql.ErrNoRows {
+			outputErrorMsg(w, http.StatusNotFound, "item not found")
+			tx.Rollback()
+			return
+		}
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+		if targetItem.SellerID != user.ID {
+			outputErrorMsg(w, http.StatusForbidden, "自分の商品以外は編集できません")
+			tx.Rollback()
+			return
+		}
+		seller := User{}
+		smtx.Load(uidStr, &seller)
+		now := time.Now()
+		// last_bump + 3s > now
+		if seller.LastBump.Add(BumpChargeSeconds).After(now) {
+			outputErrorMsg(w, http.StatusForbidden, "Bump not allowed")
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("UPDATE `items` SET `created_at`=?, `updated_at`=? WHERE id=?",
+			now,
+			now,
+			targetItem.ID,
+		)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			return
+		}
+		seller.LastBump = now
+		smtx.Store(uidStr, seller)
+		// TODO: この下は整合性がやばいかも？
+		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+		tx.Commit()
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(&resItemEdit{
+			ItemID:        targetItem.ID,
+			ItemPrice:     targetItem.Price,
+			ItemCreatedAt: targetItem.CreatedAt.Unix(),
+			ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
+		})
 	})
 }
 
@@ -990,25 +977,18 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	idStr := ""
 	accountNameToIDServer.Load(accountName, &idStr)
-	up := UserForPlainPassword{}
-	smUserServer.Load(idStr, &up)
-	if strings.Compare(up.PlainPassword, password) != 0 {
+	u := User{}
+	smUserServer.Load(idStr, &u)
+	if strings.Compare(u.PlainPassword, password) != 0 {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
 	}
 	session := getSession(r)
-	session.Values["user_id"] = up.ID
+	session.Values["user_id"] = u.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
-		return
-	}
-	u := User{}
-	err = dbx.Get(&u, "SELECT * FROM `users` WHERE `account_name` = ?", accountName)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
@@ -1040,44 +1020,24 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "error")
 		return
 	}
-
-	result, err := dbx.Exec("INSERT INTO `users` (`account_name`, `hashed_password`, `address`) VALUES (?, ?, ?)",
-		accountName,
-		hashedPassword,
-		address,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	userID, err := result.LastInsertId()
-
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		return
-	}
-
-	u := User{
-		ID:          userID,
-		AccountName: accountName,
-		Address:     address,
-	}
-	up := UserForPlainPassword{
-		AccountName:   accountName,
-		ID:            u.ID,
-		PlainPassword: password,
-	}
-	idStr := strconv.Itoa(int(up.ID))
-	smUserServer.Store(idStr, up)
-	accountNameToIDServer.Store(up.AccountName, idStr)
+	// WARN: 合ってる？
+	// トランザクションが必要？(ID)
+	var newUser User
+	newUser.ID = int64(smUserServer.GetLen() + 1)
+	newUser.AccountName = accountName
+	newUser.HashedPassword = hashedPassword
+	newUser.Address = address
+	// TODO:
+	// NumOfSellItem 不明
+	// LastBump 不明
+	// CreatedAt 不明
+	newUser.PlainPassword = password
+	idStr := strconv.Itoa(int(newUser.ID))
+	smUserServer.Store(idStr, newUser)
+	accountNameToIDServer.Store(newUser.AccountName, idStr)
 
 	session := getSession(r)
-	session.Values["user_id"] = u.ID
+	session.Values["user_id"] = newUser.ID
 	session.Values["csrf_token"] = secureRandomStr(20)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
@@ -1086,5 +1046,5 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(u)
+	json.NewEncoder(w).Encode(newUser)
 }

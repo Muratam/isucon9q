@@ -36,16 +36,12 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	if !ok {
 		return user, http.StatusNotFound, "no session"
 	}
-
-	err := dbx.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
-	if err == sql.ErrNoRows {
+	// TODO: 型が合ってる？？？
+	userIDStr := string(userID.(int64))
+	if !smUserServer.Exists(userIDStr) {
 		return user, http.StatusNotFound, "user not found"
 	}
-	if err != nil {
-		log.Print(err)
-		return user, http.StatusInternalServerError, "db error"
-	}
-
+	smUserServer.Load(userIDStr, &user)
 	return user, http.StatusOK, ""
 }
 

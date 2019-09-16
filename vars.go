@@ -53,8 +53,12 @@ var (
 
 // とりあえず plain password だけを管理するサーバー(ID/AccountName/PlainPassword以外の情報は嘘)
 var isMasterServerIP = IsMasterServerIP()
-var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884", isMasterServerIP, DefaultSendCustomFunction)
+
+// string -> string
 var accountNameToIDServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8885", isMasterServerIP, DefaultSendCustomFunction)
+
+// userId(string) -> User{}
+var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884", isMasterServerIP, DefaultSendCustomFunction)
 
 // itemid (string) -> isSold(bool) ()
 var smItemPostBuyIsLockedServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8886", isMasterServerIP, DefaultSendCustomFunction)
