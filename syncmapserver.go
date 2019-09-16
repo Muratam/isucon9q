@@ -93,6 +93,7 @@ func readAll(conn *net.Conn) []byte {
 		readBufNum, err := (*conn).Read(buf)
 		if err != nil {
 			if err == io.EOF {
+				bufAll = append(bufAll, buf[:readBufNum]...)
 				break
 			}
 			panic(err)
