@@ -79,7 +79,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	if itemID > 0 && createdAt > 0 {
 		// paging
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN = ? AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? AND (i.created_at < ?  OR (i.created_at <= ? AND i.id < ?)) ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			time.Unix(createdAt, 0),
 			time.Unix(createdAt, 0),
@@ -94,7 +94,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&items,
-			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status IN = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+			"SELECT i.*, s.id AS 'seller.id', s.account_name AS 'seller.account_name', s.num_sell_items AS 'seller.num_sell_items' FROM items i INNER JOIN users s ON i.seller_id = s.id WHERE i.status = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemsPerPage+1,
 		)
