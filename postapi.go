@@ -596,13 +596,9 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx := dbx.MustBegin()
-	item := Item{}
-	err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "items not found")
-		tx.Rollback()
-		return
-	}
+
+	shipping := Shipping{}
+	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `item_id` = ? FOR UPDATE", itemID)
 	if err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
@@ -610,8 +606,32 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if item.Status != ItemStatusTrading {
-		outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
+	ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+		ReserveID: shipping.ReserveID,
+	})
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+		tx.Rollback()
+
+		return
+	}
+
+	if !(ssr.Status == ShippingsStatusDone) {
+		outputErrorMsg(w, http.StatusBadRequest, "shipment service側で配送完了になっていません")
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec("UPDATE `shippings` SET `status` = ?, `updated_at` = ? WHERE `item_id` = ?",
+		ShippingsStatusDone,
+		time.Now(),
+		itemID,
+	)
+	if err != nil {
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
 		return
 	}
@@ -642,45 +662,6 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
-	ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-		ReserveID: shipping.ReserveID,
-	})
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-		tx.Rollback()
-
-		return
-	}
-
-	if !(ssr.Status == ShippingsStatusDone) {
-		outputErrorMsg(w, http.StatusBadRequest, "shipment service側で配送完了になっていません")
-		tx.Rollback()
-		return
-	}
-
-	_, err = tx.Exec("UPDATE `shippings` SET `status` = ?, `updated_at` = ? WHERE `transaction_evidence_id` = ?",
-		ShippingsStatusDone,
-		time.Now(),
-		transactionEvidence.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
-
 	_, err = tx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
 		TransactionEvidenceStatusDone,
 		time.Now(),
@@ -694,15 +675,49 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tx.Exec("UPDATE `items` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
+	res, err := tx.Exec("UPDATE `items` SET `status` = ?, `updated_at` = ? WHERE `id` = ?, status = ?",
 		ItemStatusSoldOut,
 		time.Now(),
 		itemID,
+		ItemStatusTrading,
 	)
 	if err != nil {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		log.Print(err)
+
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
+	if affected == 0 {
+		item := Item{}
+		err = tx.Get(&item, "SELECT * FROM `items` WHERE `id` = ?", itemID)
+		if err == sql.ErrNoRows {
+			outputErrorMsg(w, http.StatusNotFound, "items not found")
+			tx.Rollback()
+			return
+		}
+		if err != nil {
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
+		}
+
+		if item.Status != ItemStatusTrading {
+			outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
+			tx.Rollback()
+			return
+		}
+
+		outputErrorMsg(w, http.StatusNotFound, "items not found")
 		tx.Rollback()
 		return
 	}
