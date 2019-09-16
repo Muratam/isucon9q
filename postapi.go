@@ -215,12 +215,6 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusForbidden, "自分の商品は買えません")
 		return
 	}
-	strItemId := strconv.Itoa(int(rb.ItemID))
-	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
-		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
-		return
-	}
-
 	seller := User{}
 	err = dbx.Get(&seller, "SELECT * FROM `users` WHERE `id` = ?", targetItem.SellerID)
 	if err == sql.ErrNoRows {
@@ -264,6 +258,14 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	strItemId := strconv.Itoa(int(rb.ItemID))
+	if smItemPostBuyIsLockedServer.Exists(strItemId) {
+		smItemPostBuyIsLockedServer.Store(strItemId, true)
+	}
+	if smItemPostBuyIsLockedServer.IsLockedKey(strItemId) {
+		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+		return
+	}
 	smItemPostBuyIsLockedServer.StartTransactionWithKey(strItemId, func(this *SyncMapServerTransaction) {
 		tx := dbx.MustBegin()
 		result, err := tx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
