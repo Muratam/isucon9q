@@ -444,10 +444,17 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
+	userSimples, err := getUserSimples(tx)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error")
+		tx.Rollback()
+		return
+	}
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
-		seller, err := getUserSimpleByID(tx, item.SellerID)
-		if err != nil {
+		seller, ok := userSimples[item.SellerID]
+		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
 			return
