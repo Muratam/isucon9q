@@ -599,17 +599,11 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := Item{}
-	err = dbx.Get(&item, "SELECT * FROM `items` WHERE `id` = ?", itemID)
-	if err == sql.ErrNoRows {
+	ok = idToItemServer.Get(strconv.Itoa(int(itemID)), &item)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
 	category, err := getCategoryByID(dbx, item.CategoryID)
 	if err != nil {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
