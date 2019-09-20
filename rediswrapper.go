@@ -21,7 +21,7 @@ type RedisWrapper struct {
 func NewRedisWrapper(address string, dbNumber int) *RedisWrapper {
 	return &RedisWrapper{
 		Redis: redis.NewClient(&redis.Options{
-			Addr:     address,
+			Addr:     address + ":6379",
 			Password: "",       // no password set
 			DB:       dbNumber, // use default DB
 		}),
