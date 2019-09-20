@@ -77,10 +77,10 @@ func getUserSimples(q sqlx.Queryer) (userSimples map[int64]UserSimple, err error
 func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err error) {
 	user := User{}
 	userIDStr := strconv.Itoa(int(userID))
-	if !smUserServer.Exists(userIDStr) {
+	if !idToUserServer.Exists(userIDStr) {
 		return userSimple, errors.New("no user")
 	}
-	smUserServer.Load(userIDStr, &user)
+	idToUserServer.Get(userIDStr, &user)
 	userSimple.ID = user.ID
 	userSimple.AccountName = user.AccountName
 	userSimple.NumSellItems = user.NumSellItems

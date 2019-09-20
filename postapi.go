@@ -22,8 +22,8 @@ func initializeUsersDB() {
 	if !isMasterServerIP {
 		return
 	}
-	smUserServer.ClearAll()
-	accountNameToIDServer.ClearAll()
+	idToUserServer.FlushAll()
+	accountNameToIDServer.FlushAll()
 	users := make([]User, 0)
 	err := dbx.Select(&users, "SELECT * FROM `users`")
 	if err != nil {
@@ -33,8 +33,8 @@ func initializeUsersDB() {
 		u.PlainPassword = userIdToPlainPassword[int(u.ID)]
 		uidStr := strconv.Itoa(int(u.ID))
 		name := u.AccountName
-		smUserServer.Store(uidStr, u)
-		accountNameToIDServer.Store(name, uidStr)
+		idToUserServer.Set(uidStr, u)
+		accountNameToIDServer.Set(name, uidStr)
 	}
 }
 
@@ -78,7 +78,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	}
 	if isMasterServerIP {
 		initializeUsersDB()
-		smItemPostBuyIsLockedServer.ClearAll()
 	}
 
 	res := resInitialize{
@@ -239,12 +238,12 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 	seller := User{}
 	sellerIDStr := strconv.Itoa(int(targetItem.SellerID))
-	if !smUserServer.Exists(sellerIDStr) {
+	if !idToUserServer.Exists(sellerIDStr) {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		tx.Rollback()
 		return
 	}
-	smUserServer.Load(sellerIDStr, &seller)
+	idToUserServer.Get(sellerIDStr, &seller)
 	category, err := getCategoryByID(tx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
@@ -314,7 +313,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 	type PstrErr struct {
 		pstr *APIPaymentServiceTokenRes
-		err error
+		err  error
 	}
 
 	chPstrErr := make(chan PstrErr, 1)
@@ -330,7 +329,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 	for i := 0; i < 2; i++ {
 		select {
-		case scrErr := <- chScrErr:
+		case scrErr := <-chScrErr:
 			scr, err := scrErr.scr, scrErr.err
 			if err != nil {
 				log.Print(err)
@@ -354,33 +353,33 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			)
 			if err != nil {
 				log.Print(err)
-		
+
 				outputErrorMsg(w, http.StatusInternalServerError, "db error")
 				tx.Rollback()
 				return
 			}
-		case pstrErr := <- chPstrErr:
+		case pstrErr := <-chPstrErr:
 			pstr, err := pstrErr.pstr, pstrErr.err
 			if err != nil {
 				log.Print(err)
-		
+
 				outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
 				tx.Rollback()
 				return
 			}
-		
+
 			if pstr.Status == "invalid" {
 				outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
 				tx.Rollback()
 				return
 			}
-		
+
 			if pstr.Status == "fail" {
 				outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
 				tx.Rollback()
 				return
 			}
-		
+
 			if pstr.Status != "ok" {
 				outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 				tx.Rollback()
@@ -836,14 +835,14 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	strUserId := strconv.Itoa(int(user.ID))
-	if !smUserServer.Exists(strUserId) {
+	if !idToUserServer.Exists(strUserId) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		return
 	}
-	smUserServer.StartTransactionWithKey(strUserId, func(smtx *SyncMapServerTransaction) {
+	idToUserServer.Transaction(strUserId, func(smtx KeyValueStoreConn) {
 		tx := dbx.MustBegin()
 		seller := User{}
-		smtx.Load(strUserId, &seller)
+		smtx.Get(strUserId, &seller)
 		now := time.Now().Truncate(time.Second)
 		result, err := tx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			seller.ID,
@@ -879,7 +878,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		}
 		seller.NumSellItems += 1
 		seller.LastBump = now
-		smtx.Store(strUserId, seller)
+		smtx.Set(strUserId, seller)
 		tx.Commit()
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resSell{ID: itemID})
@@ -908,13 +907,13 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uidStr := strconv.Itoa(int(user.ID))
-	if !smUserServer.Exists(uidStr) {
+	if !idToUserServer.Exists(uidStr) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		return
 	}
-	smUserServer.StartTransactionWithKey(uidStr, func(smtx *SyncMapServerTransaction) {
+	targetItem := Item{}
+	idToUserServer.Transaction(uidStr, func(smtx KeyValueStoreConn) {
 		tx := dbx.MustBegin()
-		targetItem := Item{}
 		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postBump", itemID)
 		if err == sql.ErrNoRows {
 			outputErrorMsg(w, http.StatusNotFound, "item not found")
@@ -935,7 +934,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		}
 
 		seller := User{}
-		smtx.Load(uidStr, &seller)
+		smtx.Get(uidStr, &seller)
 		now := time.Now().Truncate(time.Second)
 		// last_bump + 3s > now
 		if seller.LastBump.Add(BumpChargeSeconds).After(now) {
@@ -955,8 +954,7 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seller.LastBump = now
-		smtx.Store(uidStr, seller)
-		// WARN: 整合性大丈夫かな....？
+		smtx.Set(uidStr, seller)
 		err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ?", itemID)
 		if err != nil {
 			log.Print(err)
@@ -964,15 +962,14 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 			tx.Rollback()
 			return
 		}
-
 		tx.Commit()
-		w.Header().Set("Content-Type", "application/json;charset=utf-8")
-		json.NewEncoder(w).Encode(&resItemEdit{
-			ItemID:        targetItem.ID,
-			ItemPrice:     targetItem.Price,
-			ItemCreatedAt: targetItem.CreatedAt.Unix(),
-			ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
-		})
+	})
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	json.NewEncoder(w).Encode(&resItemEdit{
+		ItemID:        targetItem.ID,
+		ItemPrice:     targetItem.Price,
+		ItemCreatedAt: targetItem.CreatedAt.Unix(),
+		ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
 	})
 }
 
@@ -996,9 +993,9 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	idStr := ""
-	accountNameToIDServer.Load(accountName, &idStr)
+	accountNameToIDServer.Get(accountName, &idStr)
 	u := User{}
-	smUserServer.Load(idStr, &u)
+	idToUserServer.Get(idStr, &u)
 	if strings.Compare(u.PlainPassword, password) != 0 {
 		outputErrorMsg(w, http.StatusUnauthorized, "アカウント名かパスワードが間違えています")
 		return
@@ -1043,7 +1040,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	// WARN: 合ってる？
 	// トランザクションが必要？(ID)
 	var newUser User
-	newUser.ID = int64(smUserServer.GetLen() + 1)
+	newUser.ID = int64(idToUserServer.DBSize() + 1)
 	newUser.AccountName = accountName
 	newUser.HashedPassword = hashedPassword
 	newUser.Address = address
@@ -1054,9 +1051,8 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	newUser.CreatedAt = time.Now() // CURRENT_TIMESTAMP
 	newUser.PlainPassword = password
 	idStr := strconv.Itoa(int(newUser.ID))
-	smUserServer.Store(idStr, newUser)
-	accountNameToIDServer.Store(newUser.AccountName, idStr)
-
+	idToUserServer.Set(idStr, newUser)
+	accountNameToIDServer.Set(newUser.AccountName, idStr)
 	session := getSession(r)
 	session.Values["user_id"] = newUser.ID
 	session.Values["csrf_token"] = secureRandomStr(20)

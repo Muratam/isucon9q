@@ -39,10 +39,10 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	}
 	// WARN: 型が怪しいけど多分大丈夫
 	userIDStr := strconv.Itoa(int(userID.(int64)))
-	if !smUserServer.Exists(userIDStr) {
+	if !idToUserServer.Exists(userIDStr) {
 		return user, http.StatusNotFound, "user not found"
 	}
-	smUserServer.Load(userIDStr, &user)
+	idToUserServer.Get(userIDStr, &user)
 	return user, http.StatusOK, ""
 }
 
@@ -105,7 +105,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		var seller User
 		sellerIDStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIDStr, &seller)
+		idToUserServer.Get(sellerIDStr, &seller)
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
@@ -232,7 +232,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	// 	sellerIdStr := strconv.Itoa(int(item.SellerID))
 	// 	keys = append(keys, sellerIdStr)
 	// }
-	// values := smUserServer.MultiLoad(keys)
+	// values := idToUserServer.MultiLoad(keys)
 	for _, item := range items {
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
@@ -243,7 +243,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		// DecodeFromBytes(value, &seller)
 		var seller User
 		sellerIdStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIdStr, &seller)
+		idToUserServer.Get(sellerIdStr, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
 		simpleSeller.AccountName = seller.AccountName
@@ -354,7 +354,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 	var seller User
 	var simpleSeller UserSimple
 	sellerIdStr := strconv.Itoa(int(userSimple.ID))
-	smUserServer.Load(sellerIdStr, &seller)
+	idToUserServer.Get(sellerIdStr, &seller)
 	simpleSeller.ID = seller.ID
 	simpleSeller.AccountName = seller.AccountName
 	simpleSeller.NumSellItems = seller.NumSellItems
