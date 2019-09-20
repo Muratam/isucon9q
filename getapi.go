@@ -37,12 +37,12 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	if !ok {
 		return user, http.StatusNotFound, "no session"
 	}
-	// WARN: 型が怪しいけど多分大丈夫
+
 	userIDStr := strconv.Itoa(int(userID.(int64)))
-	if !idToUserServer.Exists(userIDStr) {
+	exists := idToUserServer.Get(userIDStr, &user)
+	if !exists {
 		return user, http.StatusNotFound, "user not found"
 	}
-	idToUserServer.Get(userIDStr, &user)
 	return user, http.StatusOK, ""
 }
 
