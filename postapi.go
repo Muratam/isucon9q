@@ -205,7 +205,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
-	chanBoughtExistanceI := make(chan bool)
+	chanBoughtExistanceI := make(chan bool, 1)
 	chanBoughtExistance := &chanBoughtExistanceI
 	chanBoughtPre, channExists := isBoughtByKey.LoadOrStore(rb.ItemID, chanBoughtExistance)
 	if channExists {
