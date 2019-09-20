@@ -18,8 +18,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func initializeDBtoOnMemory() {
-	idToUserServer.Initialize(func() {
+func setInitializeFunction() {
+	idToUserServer.server.InitializeFunction = func() {
 		users := make([]User, 0)
 		err := dbx.Select(&users, "SELECT * FROM `users`")
 		if err != nil {
@@ -32,8 +32,8 @@ func initializeDBtoOnMemory() {
 			idToUserServerMap[key] = u
 		}
 		idToUserServer.MSet(idToUserServerMap)
-	})
-	accountNameToIDServer.Initialize(func() {
+	}
+	accountNameToIDServer.server.InitializeFunction = func() {
 		users := make([]User, 0)
 		err := dbx.Select(&users, "SELECT * FROM `users`")
 		if err != nil {
@@ -45,8 +45,8 @@ func initializeDBtoOnMemory() {
 			accountNameToIDServerMap[u.AccountName] = key
 		}
 		accountNameToIDServer.MSet(accountNameToIDServerMap)
-	})
-	idToItemServer.Initialize(func() {
+	}
+	idToItemServer.server.InitializeFunction = func() {
 		// init items
 		items := make([]Item, 0)
 		err := dbx.Select(&items, "SELECT * FROM `items`")
@@ -59,8 +59,8 @@ func initializeDBtoOnMemory() {
 			idToItemServerMap[key] = item
 		}
 		idToItemServer.MSet(idToItemServerMap)
-	})
-	transactionEvidenceToShippingsServer.Initialize(func() {
+	}
+	transactionEvidenceToShippingsServer.server.InitializeFunction = func() {
 		// init TransactionEvidence
 		ships := make([]Shipping, 0)
 		err := dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id IN (SELECT id FROM `transaction_evidences`)")
@@ -72,7 +72,16 @@ func initializeDBtoOnMemory() {
 			trIdToShippingServerMap[strconv.Itoa(int(ship.TransactionEvidenceID))] = ship
 		}
 		transactionEvidenceToShippingsServer.MSet(trIdToShippingServerMap)
-	})
+	}
+}
+
+func initializeDBtoOnMemory() {
+	// 1台目にこれが呼ばれてるけど...
+	// 複数台から同時に呼ばないように注意
+	idToUserServer.Initialize()
+	accountNameToIDServer.Initialize()
+	idToItemServer.Initialize()
+	transactionEvidenceToShippingsServer.Initialize()
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {

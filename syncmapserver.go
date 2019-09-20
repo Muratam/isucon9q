@@ -66,6 +66,9 @@ type SyncMapServer struct {
 	connectionPoolEmptyChannel chan int
 	// 関数をカスタマイズする用.強引に複数台で同期したいときに便利。
 	MySendCustomFunction func(this *SyncMapServerConn, buf []byte) []byte
+	// 初期化の方法を記す。 .Initialize  が呼ばれた時にこれで初期化する
+	// InitMarkPath(./init-) があればそれを読んで初期化関数は無視するし、なければ初期化関数を実行する。
+	InitializeFunction func()
 }
 
 const ( // connectionPoolStatus
@@ -102,10 +105,11 @@ type KeyValueStoreConn interface { // ptr は参照を着けてLoadすること�
 	RPop(key string, value interface{}) bool              // ptr (キーが無ければ false)
 	LSet(key string, index int, value interface{})
 	LRange(key string, startIndex, stopIncludingIndex int) LRangeResult // ptr (0,-1 で全て取得可能) (負数の場合はPythonと同じような処理(stopIncludingIndexがPythonより1多い)) [a,b,c][0:-1] はPythonでは最後を含まないがこちらは含む
-
 	// IsLocked(key string) は Redis には存在しない
 	Transaction(key string, f func(tx KeyValueStoreConn)) (isok bool)
 	TransactionWithKeys(keys []string, f func(tx KeyValueStoreConn)) (isok bool)
+	// ISUCONで初期化の負荷を軽減するために使う
+	Initialize()
 }
 
 // 一旦 MGetResult を経由することで、重複するキーのロードを一回のロードで済ませられる
@@ -141,8 +145,9 @@ const ( // COMMANDS
 	syncMapCommandUnlockKey   = "LU" // unlock a key
 	syncMapCommandIsLockedKey = "LI" // check is locked key
 	// そのほか
-	syncMapCommandFlushAll = "FLUSHALL"
-	syncMapCommandCustom   = "CUSTOM" // custom
+	syncMapCommandFlushAll   = "FLUSHALL"
+	syncMapCommandCustom     = "CUSTOM" // custom
+	syncMapCommandInitialize = "INITIALIZE"
 	// check lock
 	syncMapCommandIncrByWithLock = "I_WL"
 	syncMapCommandRPushWithLock  = "RPUSH_WL"
@@ -401,6 +406,8 @@ func (this *SyncMapServerConn) interpretWrapFunction(buf []byte) []byte {
 	// Custom Command
 	case syncMapCommandCustom:
 		return this.parseCustomFunction(input)
+	case syncMapCommandInitialize:
+		this.Initialize()
 	case syncMapCommandFlushAll:
 		this.FlushAll()
 	default:
@@ -985,10 +992,12 @@ func NewSyncMapServerConn(substanceAddress string, isMaster bool) *SyncMapServer
 		port, _ := strconv.Atoi(strings.Split(substanceAddress, ":")[1])
 		result := newMasterSyncMapServer(port)
 		result.MySendCustomFunction = DefaultSendCustomFunction
+		result.InitializeFunction = func() {}
 		return result.GetConn()
 	} else {
 		result := newSlaveSyncMapServer(substanceAddress)
 		result.MySendCustomFunction = DefaultSendCustomFunction
+		result.InitializeFunction = func() {}
 		return result.GetConn()
 	}
 }
@@ -1135,15 +1144,19 @@ func (this *SyncMapServer) startBackUpProcess() {
 }
 
 // 初期化データがあればそれをロード。なければ初期化の方法を書く
-func (this *SyncMapServerConn) Initialize(f func()) {
-	path := InitMarkPath + strconv.Itoa(this.server.masterPort) + ".sm"
-	err := this.server.readFile(path)
-	if err == nil { // 読み込めたので何もしない
-		return
+func (this *SyncMapServerConn) Initialize() {
+	if this.IsMasterServer() {
+		path := InitMarkPath + strconv.Itoa(this.server.masterPort) + ".sm"
+		err := this.server.readFile(path)
+		if err == nil { // 読み込めたので何もしない
+			return
+		}
+		this.FlushAll()
+		this.server.InitializeFunction()
+		this.server.writeFile(path)
+	} else {
+		this.send(syncMapCommandInitialize)
 	}
-	this.FlushAll()
-	f()
-	this.server.writeFile(path)
 }
 
 // 自身の SyncMapからLoad / 変更できるようにpointer型で受け取ること

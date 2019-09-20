@@ -297,3 +297,6 @@ func (this *RedisWrapper) TransactionWithKeys(keys []string, f func(tx KeyValueS
 	}, keys...)
 	return err == nil
 }
+func (this *RedisWrapper) Initialize() {
+	fmt.Println("Redis Initialize Command Is Not Implemented !!")
+}
