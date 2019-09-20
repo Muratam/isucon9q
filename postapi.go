@@ -206,6 +206,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "item not found")
 			return
 		}
+		log.Println(itemIdStr, " will be bought")
 		if targetItem.Status != ItemStatusOnSale {
 			outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
 			return
@@ -278,6 +279,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 			return
 		}
+		log.Println(itemIdStr, " will try to be bought")
 		// NOTE: 成功すると楽観する
 		result, err := dbx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			targetItem.SellerID,
