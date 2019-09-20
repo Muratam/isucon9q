@@ -109,9 +109,8 @@ func main() {
 	// Assets
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
 	// 起動時初期化
-	if isMasterServerIP {
-		initializeDBtoOnMemory()
-	}
-
+	// if isMasterServerIP {
+	// 	initializeDBtoOnMemory()
+	// }
 	log.Fatal(http.ListenAndServe(":8000", mux))
 }

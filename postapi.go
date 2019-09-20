@@ -22,6 +22,7 @@ func initializeDBtoOnMemory() {
 	idToUserServer.FlushAll()
 	accountNameToIDServer.FlushAll()
 	idToItemServer.FlushAll()
+	transactionEvidenceToShippingsServer.FlushAll()
 	// init users
 	users := make([]User, 0)
 	err := dbx.Select(&users, "SELECT * FROM `users`")
