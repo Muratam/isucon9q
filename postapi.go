@@ -292,6 +292,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Println(err, "At INSERTING TRANSACTION EVIDENCES")
+		} else {
+			log.Println(targetItem, ":", targetItem, ID, "BOUGHT")
 		}
 		now := time.Now().Truncate(time.Second)
 		transactionEvidenceID, _ := result.LastInsertId()

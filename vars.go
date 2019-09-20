@@ -63,7 +63,6 @@ var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMa
 var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMasterServerIP)
 
 // string -> []Hoge
-var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
-
-const keyOfTransactionEvidences = "transaction_evidences"
-const keyOfShippings = "shippings"
+// var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+// const keyOfTransactionEvidences = "transaction_evidences"
+// const keyOfShippings = "shippings"
