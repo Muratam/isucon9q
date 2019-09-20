@@ -19,9 +19,7 @@ import (
 )
 
 func initializeUsersDB() {
-	if !isMasterServerIP {
-		return
-	}
+	fmt.Println(idToUserServer.DBSize(), " users exists")
 	idToUserServer.FlushAll()
 	accountNameToIDServer.FlushAll()
 	users := make([]User, 0)
@@ -36,6 +34,7 @@ func initializeUsersDB() {
 		idToUserServer.Set(uidStr, u)
 		accountNameToIDServer.Set(name, uidStr)
 	}
+	fmt.Println(idToUserServer.DBSize(), " users saved")
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +75,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
-	if isMasterServerIP {
-		initializeUsersDB()
-	}
+	initializeUsersDB()
 
 	res := resInitialize{
 		// キャンペーン実施時には還元率の設定を返す。詳しくはマニュアルを参照のこと。

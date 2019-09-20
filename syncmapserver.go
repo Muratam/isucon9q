@@ -21,7 +21,7 @@ import (
 // かといってものすごい多いと peer する. 16 ~ 100 くらいが安定か？アクセス過多な場合は仕方ない。
 const maxSyncMapServerConnectionNum = 50
 const defaultReadBufferSize = 8192                 // ガッと取ったほうが良い。メモリを使用したくなければ 1024.逆なら65536
-const RedisHostPrivateIPAddress = "172.24.122.185" // ここで指定したサーバーに
+const RedisHostPrivateIPAddress = "172.24.122.185" // ここで指定したサーバーに(Redis /SyncMapServerを) 建てる
 // `NewSyncMapServerConn(GetMasterServerAddress()+":8884", MyServerIsOnMasterServerIP()) `
 const SyncMapBackUpPath = "./syncmapbackup-" // カレントディレクトリにバックアップを作成。パーミッションに注意。
 // 起動後この秒数毎にバックアップファイルを作成する(デフォルトでBackUpが作成される設定)

@@ -108,7 +108,10 @@ func main() {
 	mux.HandleFunc(pat.Get("/users/setting"), getIndex)
 	// Assets
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
-	// TODO: とりあえず初期化
-	initializeUsersDB()
+	// 起動時初期化
+	if !isMasterServerIP {
+		initializeUsersDB()
+	}
+
 	log.Fatal(http.ListenAndServe(":8000", mux))
 }
