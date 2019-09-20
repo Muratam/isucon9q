@@ -279,8 +279,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 			return
 		}
-		log.Println(itemIdStr, " will try to be bought")
-		// NOTE: 成功すると楽観する
+		// 成功する(itemkeyでロックしているので)
 		result, err := dbx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			targetItem.SellerID,
 			buyer.ID,
@@ -292,11 +291,6 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			category.ID,
 			category.ParentID,
 		)
-		if err != nil {
-			log.Println(err, "At INSERTING TRANSACTION EVIDENCES")
-		} else {
-			log.Println(targetItem, ":", targetItem.ID, "BOUGHT")
-		}
 		now := time.Now().Truncate(time.Second)
 		transactionEvidenceID, _ := result.LastInsertId()
 		targetItem.BuyerID = buyer.ID
