@@ -455,20 +455,18 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	sellerIds := make([]string, len(items))
+	for i, item := range items {
+		sellerIds[i] = strconv.Itoa(int(item.SellerID))
+	}
+	mGot := idToUserServer.MGet(sellerIds)
 	wg := sync.WaitGroup{}
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
-	userSimples, err := getUserSimples(tx)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
-		seller, ok := userSimples[item.SellerID]
+		var seller UserSimple
+		ok := mGot.Get(strconv.Itoa(int(item.SellerID)), &seller)
 		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			tx.Rollback()
@@ -482,22 +480,17 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		itemDetail := ItemDetail{
-			ID:       item.ID,
-			SellerID: item.SellerID,
-			Seller:   &seller,
-			// BuyerID
-			// Buyer
+			ID:          item.ID,
+			SellerID:    item.SellerID,
+			Seller:      &seller,
 			Status:      item.Status,
 			Name:        item.Name,
 			Price:       item.Price,
 			Description: item.Description,
 			ImageURL:    getImageURL(item.ImageName),
 			CategoryID:  item.CategoryID,
-			// TransactionEvidenceID
-			// TransactionEvidenceStatus
-			// ShippingStatus
-			Category:  &category,
-			CreatedAt: item.CreatedAt.Unix(),
+			Category:    &category,
+			CreatedAt:   item.CreatedAt.Unix(),
 		}
 
 		if item.BuyerID != 0 {
