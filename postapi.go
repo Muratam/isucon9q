@@ -19,7 +19,16 @@ import (
 )
 
 func setInitializeFunction() {
-	idToUserServer.server.InitializeFunction = func() {
+}
+
+func initializeDBtoOnMemory() {
+	// 1台目にこれが呼ばれてるけど...
+	// 複数台から同時に呼ばないように注意
+	idToUserServer.Initialize()
+	accountNameToIDServer.Initialize()
+	idToItemServer.Initialize()
+	transactionEvidenceToShippingsServer.Initialize()
+	func() {
 		users := make([]User, 0)
 		err := dbx.Select(&users, "SELECT * FROM `users`")
 		if err != nil {
@@ -32,24 +41,20 @@ func setInitializeFunction() {
 			idToUserServerMap[key] = u
 		}
 		idToUserServer.MSet(idToUserServerMap)
-	}
-	accountNameToIDServer.server.InitializeFunction = func() {
-		users := make([]User, 0)
-		err := dbx.Select(&users, "SELECT * FROM `users`")
-		if err != nil {
-			panic(err)
-		}
+		// users := make([]User, 0)
+		// err := dbx.Select(&users, "SELECT * FROM `users`")
+		// if err != nil {
+		// 	panic(err)
+		// }
 		accountNameToIDServerMap := map[string]interface{}{}
 		for _, u := range users {
 			key := strconv.Itoa(int(u.ID))
 			accountNameToIDServerMap[u.AccountName] = key
 		}
 		accountNameToIDServer.MSet(accountNameToIDServerMap)
-	}
-	idToItemServer.server.InitializeFunction = func() {
 		// init items
 		items := make([]Item, 0)
-		err := dbx.Select(&items, "SELECT * FROM `items`")
+		err = dbx.Select(&items, "SELECT * FROM `items`")
 		if err != nil {
 			panic(err)
 		}
@@ -59,11 +64,9 @@ func setInitializeFunction() {
 			idToItemServerMap[key] = item
 		}
 		idToItemServer.MSet(idToItemServerMap)
-	}
-	transactionEvidenceToShippingsServer.server.InitializeFunction = func() {
 		// init TransactionEvidence
 		ships := make([]Shipping, 0)
-		err := dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id IN (SELECT id FROM `transaction_evidences`)")
+		err = dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id IN (SELECT id FROM `transaction_evidences`)")
 		if err != nil {
 			panic(err)
 		}
@@ -72,16 +75,8 @@ func setInitializeFunction() {
 			trIdToShippingServerMap[strconv.Itoa(int(ship.TransactionEvidenceID))] = ship
 		}
 		transactionEvidenceToShippingsServer.MSet(trIdToShippingServerMap)
-	}
-}
 
-func initializeDBtoOnMemory() {
-	// 1台目にこれが呼ばれてるけど...
-	// 複数台から同時に呼ばないように注意
-	idToUserServer.Initialize()
-	accountNameToIDServer.Initialize()
-	idToItemServer.Initialize()
-	transactionEvidenceToShippingsServer.Initialize()
+	}()
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
