@@ -206,7 +206,6 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "item not found")
 			return
 		}
-		log.Println(itemIdStr, " will be bought")
 		if targetItem.Status != ItemStatusOnSale {
 			outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
 			return
