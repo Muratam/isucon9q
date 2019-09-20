@@ -52,9 +52,11 @@ var (
 var isMasterServerIP = MyServerIsOnMasterServerIP()
 
 // string -> string
-// var accountNameToIDServer = NewSyncMapServerConn(GetMasterServerAddress()+":8885", isMasterServerIP)
-var accountNameToIDServer = NewRedisWrapper(RedisHostPrivateIPAddress, 0)
+var accountNameToIDServer = NewSyncMapServerConn(GetMasterServerAddress()+":8885", isMasterServerIP)
+
+// var accountNameToIDServer = NewRedisWrapper(RedisHostPrivateIPAddress, 0)
 
 // userId(string) -> User{}
-// var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMasterServerIP)
-var idToUserServer = NewRedisWrapper(RedisHostPrivateIPAddress, 1)
+var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMasterServerIP)
+
+// var idToUserServer = NewRedisWrapper(RedisHostPrivateIPAddress, 1)
