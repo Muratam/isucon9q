@@ -285,7 +285,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			targetItem.SellerID,
 			buyer.ID,
 			TransactionEvidenceStatusWaitShipping,
-			rb.ItemID, // ???
+			targetItem.ID,
 			targetItem.Name,
 			targetItem.Price,
 			targetItem.Description,
@@ -295,7 +295,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println(err, "At INSERTING TRANSACTION EVIDENCES")
 		} else {
-			log.Println(targetItem, ":", itemIdStr, "BOUGHT")
+			log.Println(targetItem, ":", targetItem.ID, "BOUGHT")
 		}
 		now := time.Now().Truncate(time.Second)
 		transactionEvidenceID, _ := result.LastInsertId()
@@ -308,13 +308,13 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			buyer.ID,
 			ItemStatusTrading,
 			now,
-			rb.ItemID,
+			targetItem.ID,
 		)
 		dbx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
 			transactionEvidenceID,
 			ShippingsStatusInitial,
 			targetItem.Name,
-			rb.ItemID,
+			targetItem.ID,
 			scr.ReserveID,
 			scr.ReserveTime,
 			buyer.Address,
@@ -738,6 +738,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			itemID := idToItemServer.DBSize() + 1
 			itemIDStr := strconv.Itoa(itemID)
 			now := time.Now().Truncate(time.Second)
+			item.ID = int64(itemID)
 			item.CreatedAt = now
 			item.UpdatedAt = now
 			item.TimeDateID = now.Format("20060102150405") + fmt.Sprintf("%08d", itemID)
