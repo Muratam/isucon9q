@@ -17,12 +17,12 @@ type RedisWrapper struct {
 	isAlreadySet bool // Transaction時に既に変更を加えるコマンドを行ったか
 }
 
-func NewRedisWrapper(address string) *RedisWrapper {
+func NewRedisWrapper(address string, dbNumber int) *RedisWrapper {
 	return &RedisWrapper{
 		Redis: redis.NewClient(&redis.Options{
 			Addr:     address,
-			Password: "", // no password set
-			DB:       0,  // use default DB
+			Password: "",       // no password set
+			DB:       dbNumber, // use default DB
 		}),
 		tx:           nil,
 		pipe:         nil,

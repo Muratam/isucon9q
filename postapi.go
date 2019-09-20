@@ -238,16 +238,16 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 	seller := User{}
 	sellerIDStr := strconv.Itoa(int(targetItem.SellerID))
-	if !idToUserServer.Exists(sellerIDStr) {
+	exists := idToUserServer.Get(sellerIDStr, &seller)
+	if !exists {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		tx.Rollback()
 		return
 	}
-	idToUserServer.Get(sellerIDStr, &seller)
+
 	category, err := getCategoryByID(tx, targetItem.CategoryID)
 	if err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
 		tx.Rollback()
 		return
