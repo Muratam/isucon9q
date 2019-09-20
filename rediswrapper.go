@@ -4,6 +4,7 @@ package main
 // どうせシリアライズする必要があるので、 int 値以外は全て[]byteにしている。
 //  (int値は IncrByの都合上そのまま置く必要があるので[]byteにしていない)
 import (
+	"fmt"
 	"log"
 	"strconv"
 
@@ -80,10 +81,14 @@ func (this *RedisWrapper) Set(key string, value interface{}) {
 	if _, ok := value.(int); !ok {
 		value = encodeToBytes(value)
 	}
+	var err error
 	if this.IsTransactionNow() {
-		(*this.pipe).Set(key, value, 0)
+		err = (*this.pipe).Set(key, value, 0).Err()
 	} else {
-		this.Redis.Set(key, value, 0)
+		err = this.Redis.Set(key, value, 0).Err()
+	}
+	if err != nil {
+		fmt.Println("Redis Error", err)
 	}
 }
 func (this *RedisWrapper) MGet(keys []string) MGetResult {
