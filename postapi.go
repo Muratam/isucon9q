@@ -489,21 +489,21 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+	var ssr *APIShipmentStatusRes
 	for i := 0; i < 10; i++ {
 		// NOTE: どうなるんだろ...失敗し続けたら
-		ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+		ssr, err = APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
 			ReserveID: shipping.ReserveID,
 		})
 		if err == nil {
 			break
 		}
-		if !(ssr.Status == ShippingsStatusShipping || ssr.Status == ShippingsStatusDone) {
-			outputErrorMsg(w, http.StatusForbidden, "shipment service側で配送中か配送完了になっていません")
-			tx.Rollback()
-			return
-		}
 	}
-
+	if !(ssr.Status == ShippingsStatusShipping || ssr.Status == ShippingsStatusDone) {
+		outputErrorMsg(w, http.StatusForbidden, "shipment service側で配送中か配送完了になっていません")
+		tx.Rollback()
+		return
+	}
 	_, err = tx.Exec("UPDATE `shippings` SET `status` = ?, `updated_at` = ? WHERE `transaction_evidence_id` = ?",
 		ssr.Status,
 		time.Now(),
