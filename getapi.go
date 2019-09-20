@@ -158,14 +158,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var categoryIDs []int
-	err = dbx.Select(&categoryIDs, "SELECT id FROM `categories` WHERE parent_id=?", rootCategory.ID)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
+	categoryIDs := parentIdToId[rootCategory.ID]
 	query := r.URL.Query()
 	itemIDStr := query.Get("item_id")
 	var itemID int64
