@@ -19,23 +19,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func initializeUsersDB() {
-	fmt.Println(idToUserServer.DBSize(), " users exists")
+func initializeDBtoOnMemory() {
 	idToUserServer.FlushAll()
 	accountNameToIDServer.FlushAll()
+	idToItemServer.FlushAll()
+	// init users
 	users := make([]User, 0)
 	err := dbx.Select(&users, "SELECT * FROM `users`")
 	if err != nil {
 		panic(err)
 	}
+	keys := map[string]interface{}{}
+	names := map[string]interface{}{}
 	for _, u := range users {
 		u.PlainPassword = userIdToPlainPassword[int(u.ID)]
-		uidStr := strconv.Itoa(int(u.ID))
-		name := u.AccountName
-		idToUserServer.Set(uidStr, u)
-		accountNameToIDServer.Set(name, uidStr)
+		key := strconv.Itoa(int(u.ID))
+		keys[key] = u
+		names[u.AccountName] = key
 	}
-	fmt.Println(idToUserServer.DBSize(), " users saved")
+	idToUserServer.MSet(keys)
+	accountNameToIDServer.MSet(names)
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +79,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		return
 	}
-	initializeUsersDB()
+	initializeDBtoOnMemory()
 
 	res := resInitialize{
 		// キャンペーン実施時には還元率の設定を返す。詳しくはマニュアルを参照のこと。

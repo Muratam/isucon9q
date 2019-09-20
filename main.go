@@ -110,7 +110,7 @@ func main() {
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
 	// 起動時初期化
 	if isMasterServerIP {
-		initializeUsersDB()
+		initializeDBtoOnMemory()
 	}
 
 	log.Fatal(http.ListenAndServe(":8000", mux))
