@@ -704,12 +704,9 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	}
 
 	imgName := fmt.Sprintf("%s%s", secureRandomStr(16), ext)
-	err = ioutil.WriteFile(fmt.Sprintf("../public/upload/%s", imgName), img, 0644)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "Saving image failed")
-		return
-	}
+	go func() {
+		ioutil.WriteFile(fmt.Sprintf("../public/upload/%s", imgName), img, 0644)
+	}()
 	strUserId := strconv.Itoa(int(user.ID))
 	if !idToUserServer.Exists(strUserId) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
