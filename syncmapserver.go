@@ -24,10 +24,11 @@ const defaultReadBufferSize = 8192                 // ガッと取ったほう�
 const RedisHostPrivateIPAddress = "172.24.122.185" // ここで指定したサーバーに(Redis /SyncMapServerを) 建てる
 // `NewSyncMapServerConn(GetMasterServerAddress()+":8884", MyServerIsOnMasterServerIP()) `
 const SyncMapBackUpPath = "./syncmapbackup-" // カレントディレクトリにバックアップを作成。パーミッションに注意。
+const InitMarkPath = "./init-"               // 初期化データ
 // 起動後この秒数毎にバックアップファイルを作成する(デフォルトでBackUpが作成される設定)
 // /initialize の 120秒後にBackUpとかが多分いい感じかも。
 // Redis は save 900 1 \n save 300 10 \n save 60 10000 とかを手動で設定ファイルに書くとよさそう
-const DefaultBackUpTimeSecond = 30
+const DefaultBackUpTimeSecond = 120
 
 // 一人がロック中に他のロックしていない人が値を書き換えることができるが問題はないはず
 //  ↑ 整合性が必要なデータかつ不必要なデータということになるので、そんなことは起こらないはず
@@ -1044,7 +1045,7 @@ func newMasterSyncMapServer(port int) *SyncMapServer {
 	// 何も設定しなければecho
 	this.MySendCustomFunction = DefaultSendCustomFunction
 	// バックアップファイルが見つかればそれを読み込む
-	this.readFile()
+	this.readFile(this.getDefaultPath())
 	// バックアッププロセスを開始する
 	this.startBackUpProcess()
 	return &this
@@ -1068,10 +1069,10 @@ func newSlaveSyncMapServer(substanceAddress string) *SyncMapServer {
 	// Redisがそういう仕組みなのでこちらもそのようにしておく
 	return &this
 }
-func (this *SyncMapServer) getPath() string {
+func (this *SyncMapServer) getDefaultPath() string {
 	return SyncMapBackUpPath + strconv.Itoa(this.masterPort) + ".sm"
 }
-func (this *SyncMapServer) writeFile() {
+func (this *SyncMapServer) writeFile(path string) {
 	if !this.IsMasterServer() {
 		return
 	}
@@ -1092,23 +1093,23 @@ func (this *SyncMapServer) writeFile() {
 		result = append(result, here)
 		return true
 	})
-	file, err := os.Create(this.getPath())
+	file, err := os.Create(path)
 	if err != nil {
 		panic(err)
 	}
 	defer file.Close()
 	file.Write(encodeToBytes(result))
 }
-func (this *SyncMapServer) readFile() {
+func (this *SyncMapServer) readFile(path string) error {
 	if !this.IsMasterServer() {
-		return
+		return nil
 	}
 	// Lock ?
-	encoded, err := ioutil.ReadFile(this.getPath())
+	encoded, err := ioutil.ReadFile(path)
 	if err != nil {
-		// fmt.Println("no " + this.getPath() + "exists.")
-		return
+		return err
 	}
+	// 読み込めなければデータはそのまま
 	conn := this.GetConn()
 	conn.FlushAll()
 	var decoded [][][]byte
@@ -1124,12 +1125,25 @@ func (this *SyncMapServer) readFile() {
 			panic(nil)
 		}
 	}
+	return nil
 }
 func (this *SyncMapServer) startBackUpProcess() {
 	go func() {
 		time.Sleep(time.Duration(DefaultBackUpTimeSecond) * time.Second)
-		this.writeFile()
+		this.writeFile(this.getDefaultPath())
 	}()
+}
+
+// 初期化データがあればそれをロード。なければ初期化の方法を書く
+func (this *SyncMapServerConn) Initialize(f func()) {
+	path := InitMarkPath + strconv.Itoa(this.server.masterPort) + ".sm"
+	err := this.server.readFile(path)
+	if err == nil { // 読み込めたので何もしない
+		return
+	}
+	this.FlushAll()
+	f()
+	this.server.writeFile(path)
 }
 
 // 自身の SyncMapからLoad / 変更できるようにpointer型で受け取ること
