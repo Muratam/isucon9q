@@ -50,6 +50,17 @@ func initializeDBtoOnMemory() {
 		idToItemServerMap[key] = item
 	}
 	idToItemServer.MSet(idToItemServerMap)
+	// init TransactionEvidence
+	ships := make([]Shipping, 0)
+	err = dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id IN (SELECT id FROM `transaction_evidences`)")
+	if err != nil {
+		panic(err)
+	}
+	trIdToShippingServerMap := map[string]interface{}{}
+	for _, ship := range ships {
+		trIdToShippingServerMap[strconv.Itoa(int(ship.TransactionEvidenceID))] = ship
+	}
+	transactionEvidenceToShippingsServer.MSet(trIdToShippingServerMap)
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +314,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			now,
 			targetItem.ID,
 		)
-		dbx.Exec("INSERT INTO `shippings` (`transaction_evidence_id`, `status`, `item_name`, `item_id`, `reserve_id`, `reserve_time`, `to_address`, `to_name`, `from_address`, `from_name`, `img_binary`) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+		ship := Shipping{
 			transactionEvidenceID,
 			ShippingsStatusInitial,
 			targetItem.Name,
@@ -314,8 +325,11 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			buyer.AccountName,
 			seller.Address,
 			seller.AccountName,
-			"",
-		)
+			[]byte{},
+			now,
+			now,
+		}
+		transactionEvidenceToShippingsServer.Set(strconv.Itoa(int(transactionEvidenceID)), ship)
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
 		successed = true
@@ -325,98 +339,54 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 
 func postShip(w http.ResponseWriter, r *http.Request) {
 	reqps := reqPostShip{}
-
 	err := json.NewDecoder(r.Body).Decode(&reqps)
 	if err != nil {
 		outputErrorMsg(w, http.StatusBadRequest, "json decode error")
 		return
 	}
-
 	csrfToken := reqps.CSRFToken
 	itemID := reqps.ItemID
-
 	if csrfToken != getCSRFToken(r) {
 		outputErrorMsg(w, http.StatusUnprocessableEntity, "csrf token error")
-
 		return
 	}
-
 	seller, errCode, errMsg := getUser(r)
 	if errMsg != "" {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
-
 	transactionEvidence := TransactionEvidence{}
-
-	tx := dbx.MustBegin()
-
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-
 	if transactionEvidence.SellerID != seller.ID {
 		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		tx.Rollback()
 		return
 	}
-
 	if transactionEvidence.Status != TransactionEvidenceStatusWaitShipping {
 		outputErrorMsg(w, http.StatusForbidden, "準備ができていません")
-		tx.Rollback()
 		return
 	}
-
 	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
+	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
-		tx.Rollback()
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-
 	img, err := APIShipmentRequest(getShipmentServiceURL(), &APIShipmentRequestReq{
 		ReserveID: shipping.ReserveID,
 	})
 	if err != nil {
-		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-		tx.Rollback()
-
 		return
 	}
-
-	_, err = tx.Exec("UPDATE `shippings` SET `status` = ?, `img_binary` = ?, `updated_at` = ? WHERE `transaction_evidence_id` = ?",
-		ShippingsStatusWaitPickup,
-		img,
-		time.Now(),
-		transactionEvidence.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-
-	tx.Commit()
-
+	shipping.ImgBinary = img
+	shipping.Status = ShippingsStatusWaitPickup
+	shipping.UpdatedAt = time.Now().Truncate(time.Second)
+	transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
 	rps := resPostShip{
 		Path:      fmt.Sprintf("/transactions/%d.png", transactionEvidence.ID),
 		ReserveID: shipping.ReserveID,
@@ -477,15 +447,10 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ? FOR UPDATE", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
+	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
@@ -504,34 +469,22 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
-	_, err = tx.Exec("UPDATE `shippings` SET `status` = ?, `updated_at` = ? WHERE `transaction_evidence_id` = ?",
-		ssr.Status,
-		time.Now(),
-		transactionEvidence.ID,
-	)
-	if err != nil {
-		log.Print(err)
-
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-
+	now := time.Now().Truncate(time.Second)
 	_, err = tx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
 		TransactionEvidenceStatusWaitDone,
-		time.Now(),
+		now,
 		transactionEvidence.ID,
 	)
 	if err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 		tx.Rollback()
 		return
 	}
-
 	tx.Commit()
-
+	shipping.Status = ssr.Status
+	shipping.UpdatedAt = now
+	transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidence.ID})
 }
@@ -583,11 +536,8 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		shipping := Shipping{}
-		err = dbx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-		if err != nil {
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			return
-		}
+		trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+		transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
 		ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
 			ReserveID: shipping.ReserveID,
 		})
@@ -601,11 +551,9 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		}
 		// 楽観
 		now := time.Now().Truncate(time.Second)
-		dbx.Exec("UPDATE `shippings` SET `status` = ?, `updated_at` = ? WHERE `transaction_evidence_id` = ?",
-			ShippingsStatusDone,
-			now,
-			transactionEvidence.ID,
-		)
+		shipping.Status = ShippingsStatusDone
+		shipping.UpdatedAt = now
+		transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
 		dbx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
 			TransactionEvidenceStatusDone,
 			now,
@@ -908,7 +856,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	newUser.NumSellItems = 0
 	t, _ := time.Parse("2006-01-02 15:04:05", "2000-01-01 00:00:00")
 	newUser.LastBump = t
-	newUser.CreatedAt = time.Now() // CURRENT_TIMESTAMP
+	newUser.CreatedAt = time.Now().Truncate(time.Second) // CURRENT_TIMESTAMP
 	newUser.PlainPassword = password
 	idStr := strconv.Itoa(int(newUser.ID))
 	idToUserServer.Set(idStr, newUser)

@@ -62,7 +62,12 @@ var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMa
 // itemId(string) -> Item{}
 var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMasterServerIP)
 
+// transaction_evidence_id -> shippings
+var transactionEvidenceToShippingsServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+
 // string -> []Hoge
 // var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
 // const keyOfTransactionEvidences = "transaction_evidences"
 // const keyOfShippings = "shippings"
+// item_id -> transaction_evidences
+//      [id -> ]のために保持？

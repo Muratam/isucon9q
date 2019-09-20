@@ -509,15 +509,10 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 		if transactionEvidence.ID > 0 {
 			shipping := Shipping{}
-			err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
+			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
-				tx.Rollback()
-				return
-			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
 				tx.Rollback()
 				return
 			}
@@ -648,17 +643,12 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 
 		if transactionEvidence.ID > 0 {
 			shipping := Shipping{}
-			err = dbx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
+			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				return
 			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-				return
-			}
-
 			itemDetail.TransactionEvidenceID = transactionEvidence.ID
 			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
 			itemDetail.ShippingStatus = shipping.Status
@@ -701,16 +691,12 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = dbx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
+	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
 		return
 	}
-	if err != nil {
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
 	if shipping.Status != ShippingsStatusWaitPickup && shipping.Status != ShippingsStatusShipping {
 		outputErrorMsg(w, http.StatusForbidden, "qrcode not available")
 		return
