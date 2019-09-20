@@ -82,10 +82,6 @@ func initializeDBtoOnMemory() {
 	accountNameToIDServer.Initialize()
 	idToItemServer.Initialize()
 	transactionEvidenceToShippingsServer.Initialize()
-	log.Println("idToUserServer:", idToUserServer.DBSize())
-	log.Println("accountNameToIDServer:", accountNameToIDServer.DBSize())
-	log.Println("idToItemServer:", idToItemServer.DBSize())
-	log.Println("transactionEvidenceToShippingsServer:", transactionEvidenceToShippingsServer.DBSize())
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {

@@ -1145,18 +1145,26 @@ func (this *SyncMapServer) startBackUpProcess() {
 
 // 初期化データがあればそれをロード。なければ初期化の方法を書く
 func (this *SyncMapServerConn) Initialize() {
+	log.Println("INIT 1:", this.DBSize())
 	if this.IsMasterServer() {
 		path := InitMarkPath + strconv.Itoa(this.server.masterPort) + ".sm"
+		log.Println("INIT 2:", this.DBSize())
 		err := this.server.readFile(path)
+		log.Println("INIT 3:", this.DBSize())
 		if err == nil { // 読み込めたので何もしない
 			return
 		}
+		log.Println("INIT 4:", this.DBSize())
 		this.FlushAll()
+		log.Println("INIT 5:", this.DBSize())
 		this.server.InitializeFunction()
+		log.Println("INIT 6:", this.DBSize())
 		this.server.writeFile(path)
+		log.Println("INIT 7:", this.DBSize())
 	} else {
 		this.send(syncMapCommandInitialize)
 	}
+	log.Println("INITIALIZZED:", this.DBSize())
 }
 
 // 自身の SyncMapからLoad / 変更できるようにpointer型で受け取ること
