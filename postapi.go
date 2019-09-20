@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -182,6 +183,8 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var isBoughtByKey sync.Map // rb.ItemID -> (chan int)
+
 func postBuy(w http.ResponseWriter, r *http.Request) {
 	rb := reqBuy{}
 
@@ -202,34 +205,47 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, errCode, errMsg)
 		return
 	}
+	var chanBoughtExistance = make(chan bool)
+	chanBoughtPre, channExists := isBoughtByKey.LoadOrStore(rb.ItemID, &chanBoughtExistance)
+	if channExists {
+		chanBoughtExistance = (*chanBoughtPre.(*(chan bool)))
+		isBought := <-chanBoughtExistance
+		if isBought {
+			outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
+			chanBoughtExistance <- true
+			return
+		}
+	}
 
-	time.Sleep(time.Duration(rand.Int63n(1000)) * time.Nanosecond)
 	tx := dbx.MustBegin()
-
 	targetItem := Item{}
+
 	err = tx.Get(&targetItem, "SELECT * FROM `items` WHERE `id` = ? FOR UPDATE -- postBuy", rb.ItemID)
 	if err == sql.ErrNoRows {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 	if err != nil {
 		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
 	if targetItem.Status != ItemStatusOnSale {
 		outputErrorMsg(w, http.StatusForbidden, "item is not for sale")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
 	if targetItem.SellerID == buyer.ID {
 		outputErrorMsg(w, http.StatusForbidden, "自分の商品は買えません")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
@@ -239,6 +255,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
@@ -247,6 +264,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
@@ -262,19 +280,17 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		category.ParentID,
 	)
 	if err != nil {
-		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
 	transactionEvidenceID, err := result.LastInsertId()
 	if err != nil {
-		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
@@ -285,10 +301,9 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		targetItem.ID,
 	)
 	if err != nil {
-		log.Print(err)
-
 		outputErrorMsg(w, http.StatusInternalServerError, "db error")
 		tx.Rollback()
+		chanBoughtExistance <- false
 		return
 	}
 
@@ -332,6 +347,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 				log.Print(err)
 				outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 
@@ -349,44 +365,46 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 				"",
 			)
 			if err != nil {
-				log.Print(err)
-
 				outputErrorMsg(w, http.StatusInternalServerError, "db error")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 		case pstrErr := <-chPstrErr:
 			pstr, err := pstrErr.pstr, pstrErr.err
 			if err != nil {
 				log.Print(err)
-
 				outputErrorMsg(w, http.StatusInternalServerError, "payment service is failed")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 
 			if pstr.Status == "invalid" {
 				outputErrorMsg(w, http.StatusBadRequest, "カード情報に誤りがあります")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 
 			if pstr.Status == "fail" {
 				outputErrorMsg(w, http.StatusBadRequest, "カードの残高が足りません")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 
 			if pstr.Status != "ok" {
 				outputErrorMsg(w, http.StatusBadRequest, "想定外のエラー")
 				tx.Rollback()
+				chanBoughtExistance <- false
 				return
 			}
 		}
 	}
 
 	tx.Commit()
-
+	chanBoughtExistance <- true
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
 }
