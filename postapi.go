@@ -704,9 +704,12 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	}
 
 	imgName := fmt.Sprintf("%s%s", secureRandomStr(16), ext)
-	go func() {
-		ioutil.WriteFile(fmt.Sprintf("../public/upload/%s", imgName), img, 0644)
-	}()
+	err = ioutil.WriteFile(fmt.Sprintf("../public/upload/%s", imgName), img, 0644)
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "Saving image failed")
+		return
+	}
 	strUserId := strconv.Itoa(int(user.ID))
 	if !idToUserServer.Exists(strUserId) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
@@ -862,7 +865,7 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	session := getSession(r)
 	session.Values["user_id"] = u.ID
-	session.Values["csrf_token"] = secureRandomStr(20)
+	session.Values["csrf_token"] = secureRandomStr(4)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
@@ -915,7 +918,7 @@ func postRegister(w http.ResponseWriter, r *http.Request) {
 	accountNameToIDServer.Set(newUser.AccountName, idStr)
 	session := getSession(r)
 	session.Values["user_id"] = newUser.ID
-	session.Values["csrf_token"] = secureRandomStr(20)
+	session.Values["csrf_token"] = secureRandomStr(4)
 	if err = session.Save(r, w); err != nil {
 		log.Print(err)
 		outputErrorMsg(w, http.StatusInternalServerError, "session error")
