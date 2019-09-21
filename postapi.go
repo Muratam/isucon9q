@@ -682,7 +682,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		return
 	}
-	successed := false
+	successedA := false
 	var itemID int
 	idToUserServer.Transaction(strUserId, func(utx KeyValueStoreConn) {
 		seller := User{}
@@ -704,8 +704,9 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			item.CreatedAt = now
 			item.UpdatedAt = now
 			item.TimeDateID = now.Format("20060102150405") + fmt.Sprintf("%08d", itemID)
-			successed := false
+			successedB := false
 			idToItemServer.Transaction(itemIDStr, func(tx KeyValueStoreConn) {
+				// TODO: よくない？
 				if tx.Exists(itemIDStr) {
 					return
 				}
@@ -722,18 +723,19 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 					item.UpdatedAt,
 					item.TimeDateID,
 				)
-				successed = true
+				successedB = true
 			})
-			if !successed {
+			if !successedB {
 				continue
 			}
 			seller.NumSellItems += 1
 			seller.LastBump = now
 			utx.Set(strUserId, seller)
-			break
+			successedA = true
+			return
 		}
 	})
-	if successed {
+	if successedA {
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
 		json.NewEncoder(w).Encode(resSell{ID: int64(itemID)})
 	}
