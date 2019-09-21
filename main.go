@@ -21,6 +21,14 @@ import (
 func init() {
 	rand.Seed(time.Now().UnixNano())
 	store = sessions.NewCookieStore([]byte("abc"))
+	client = http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns: 500,
+			MaxIdleConnsPerHost: 200,
+			IdleConnTimeout: 120 * time.Second,
+		},
+	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
@@ -57,7 +65,7 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		user,
 		password,
 		host,
