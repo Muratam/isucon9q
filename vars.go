@@ -47,7 +47,7 @@ var (
 	templates *template.Template
 	dbx       *sqlx.DB
 	store     sessions.Store
-	client		http.Client
+	client    http.Client
 )
 
 // とりあえず plain password だけを管理するサーバー(ID/AccountName/PlainPassword以外の情報は嘘)
@@ -68,6 +68,9 @@ var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMa
 // transaction_evidence_id -> shippings
 // var transactionEvidenceToShippingsServer = NewRedisWrapper(RedisHostPrivateIPAddress, 3)
 var transactionEvidenceToShippingsServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+
+// itemId -> transactionEvidence
+var itemIdToTransactionEvidenceServer = NewSyncMapServerConn(GetMasterServerAddress()+":8881", isMasterServerIP)
 
 // string -> []Hoge
 // var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)

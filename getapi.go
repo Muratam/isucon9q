@@ -15,7 +15,6 @@ import (
 	"goji.io/pat"
 )
 
-
 func getSession(r *http.Request) *sessions.Session {
 	// これをキーにして返す
 	cookie, err := r.Cookie("session_isucari")
@@ -88,14 +87,14 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// カテゴリーごと
-	user, errCode, errMsg := getUser(r)
-	if errMsg != "" {
-		outputErrorMsg(w, errCode, errMsg)
-		return
-	}
+	// NOTE: カテゴリーごと ?
+	// user, errCode, errMsg := getUser(r)
+	// if errMsg != "" {
+	// 	outputErrorMsg(w, errCode, errMsg)
+	// 	return
+	// }
 	var categoryIDs []int
-	categoriesExists := nil != dbx.Select(&categoryIDs, "SELECT category_id FROM `items` WHERE buyer_id=?", user.ID)
+	categoriesExists := false // nil != dbx.Select(&categoryIDs, "SELECT category_id FROM `items` WHERE buyer_id=?", user.ID)
 	items := []Item{}
 	preQuery := "SELECT * FROM items WHERE status = ? "
 	midQuery := " AND timedateid < ? "
@@ -475,14 +474,19 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	for i, item := range items {
 		sellerIds[i] = strconv.Itoa(int(item.SellerID))
 	}
-	mGot := idToUserServer.MGet(sellerIds)
+	mGotIdToUser := idToUserServer.MGet(sellerIds)
 	wg := sync.WaitGroup{}
-	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
+	itemIdStrs := make([]string, len(items))
+	for i, item := range items {
+		itemIdStrs[i] = strconv.Itoa(int(item.ID))
+	}
+	mGotItemIdToTE := itemIdToTransactionEvidenceServer.MGet(itemIdStrs)
+	itemDetails := make([]ItemDetail, 0)
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
 		var seller UserSimple
-		ok := mGot.Get(strconv.Itoa(int(item.SellerID)), &seller)
+		ok := mGotIdToUser.Get(strconv.Itoa(int(item.SellerID)), &seller)
 		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
 			return
@@ -492,7 +496,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
-
 		itemDetail := ItemDetail{
 			ID:          item.ID,
 			SellerID:    item.SellerID,
@@ -506,7 +509,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			Category:    &category,
 			CreatedAt:   item.CreatedAt.Unix(),
 		}
-
 		if item.BuyerID != 0 {
 			buyer, err := getUserSimpleByID(dbx, item.BuyerID)
 			if err != nil {
@@ -516,16 +518,9 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemDetail.BuyerID = item.BuyerID
 			itemDetail.Buyer = &buyer
 		}
-
 		transactionEvidence := TransactionEvidence{}
-		err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ID)
-		if err != nil && err != sql.ErrNoRows {
-			// It's able to ignore ErrNoRows
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			return
-		}
-
-		if transactionEvidence.ID > 0 {
+		trExists := mGotItemIdToTE.Get(strconv.Itoa(int(item.ID)), &transactionEvidence)
+		if trExists && transactionEvidence.ID > 0 {
 			shipping := Shipping{}
 			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
 			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
@@ -534,8 +529,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			ssrStatus := shipping.Status
-			wg.Add(1)
 			if ssrStatus != ShippingsStatusDone {
+				wg.Add(1)
 				go func(i int) {
 					ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
 						ReserveID: shipping.ReserveID,
@@ -549,26 +544,18 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 					itemDetails[i].ShippingStatus = ssr.Status
 					wg.Done()
 				}(i)
-			} else {
-				wg.Done()
 			}
-
 			itemDetail.TransactionEvidenceID = transactionEvidence.ID
 			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
 			itemDetail.ShippingStatus = ssrStatus
 		}
-
 		itemDetails = append(itemDetails, itemDetail)
-
 		chans[i] <- ""
-
 		if len(itemDetails) > TransactionsPerPage {
 			break
 		}
 	}
-
 	wg.Wait()
-
 	hasNext := false
 	if len(itemDetails) > TransactionsPerPage {
 		hasNext = true
@@ -647,15 +634,8 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		itemDetail.Buyer = &buyer
 
 		transactionEvidence := TransactionEvidence{}
-		err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ID)
-		if err != nil && err != sql.ErrNoRows {
-			// It's able to ignore ErrNoRows
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			return
-		}
-
-		if transactionEvidence.ID > 0 {
+		ok := itemIdToTransactionEvidenceServer.Get(strconv.Itoa(int(item.ID)), &transactionEvidence)
+		if ok && transactionEvidence.ID > 0 {
 			shipping := Shipping{}
 			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
 			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
