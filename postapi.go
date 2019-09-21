@@ -18,10 +18,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var users = make([]User, 0)
-var idToUserServerMap = map[string]interface{}{}
-var accountNameToIDServerMap = map[string]interface{}{}
-
 func setInitializeFunction() {
 	idToUserServer.server.InitializeFunction = func() {
 		log.Println("idToUserServer init")
@@ -72,7 +68,19 @@ func setInitializeFunction() {
 	}
 }
 
+// ローカルキャッシュ
+var users = make([]User, 0)
+var idToUserServerMap = map[string]interface{}{}
+var accountNameToIDServerMap = map[string]interface{}{}
+var isBoughtByKey = sync.Map{} // rb.ItemID -> (chan int)
+var sessionCache = sync.Map{}  //[string]sessions.Session{}
+
 func initializeDBtoOnMemory() {
+	users = make([]User, 0)
+	idToUserServerMap = map[string]interface{}{}
+	accountNameToIDServerMap = map[string]interface{}{}
+	isBoughtByKey = sync.Map{}
+	sessionCache = sync.Map{}
 	// 1台目にこれが呼ばれてるけど...
 	// 複数台から同時に呼ばないように注意
 	var wg sync.WaitGroup
@@ -202,8 +210,6 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 		ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
 	})
 }
-
-var isBoughtByKey sync.Map // rb.ItemID -> (chan int)
 
 func postBuy(w http.ResponseWriter, r *http.Request) {
 	rb := reqBuy{}
