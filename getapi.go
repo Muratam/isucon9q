@@ -15,7 +15,7 @@ import (
 	"goji.io/pat"
 )
 
-var sessionCache = map[string]sessions.Session{}
+var sessionCache sync.Map //[string]sessions.Session{}
 
 func getSession(r *http.Request) *sessions.Session {
 	// これをキーにして返す
@@ -23,12 +23,12 @@ func getSession(r *http.Request) *sessions.Session {
 	if err == nil {
 		// csrf_token / user_id
 		// fmt.Println("COOKIE:", cookie.Value)
-		if val, ok := sessionCache[cookie.Value]; ok {
-			res := val // copy
+		if val, ok := sessionCache.Load(cookie.Value); ok {
+			res := val.(sessions.Session) // copy
 			return &res
 		} else {
 			session, _ := store.Get(r, sessionName)
-			sessionCache[cookie.Value] = *session
+			sessionCache.Store(cookie.Value, *session)
 			return session
 		}
 	} else {
