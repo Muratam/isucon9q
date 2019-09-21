@@ -75,10 +75,22 @@ func setInitializeFunction() {
 func initializeDBtoOnMemory() {
 	// 1台目にこれが呼ばれてるけど...
 	// 複数台から同時に呼ばないように注意
-	idToUserServer.Initialize()
-	accountNameToIDServer.Initialize()
-	idToItemServer.Initialize()
-	transactionEvidenceToShippingsServer.Initialize()
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		idToUserServer.Initialize()
+		accountNameToIDServer.Initialize()
+		wg.Done()
+	}()
+	go func() {
+		idToItemServer.Initialize()
+		wg.Done()
+	}()
+	go func() {
+		transactionEvidenceToShippingsServer.Initialize()
+		wg.Done()
+	}()
+	wg.Wait()
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {

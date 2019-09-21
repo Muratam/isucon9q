@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,45 @@ import (
 	"goji.io/pat"
 )
 
+type sessionInfo struct {
+	s *sessions.Session
+	e error
+}
+type Registry struct {
+	request  *http.Request
+	sessions map[string]sessionInfo
+}
+
 func getSession(r *http.Request) *sessions.Session {
+	var ctx = r.Context()
+	registry := ctx.Value(0)
+	var newRegistry *Registry
+	if registry != nil {
+		newRegistry = registry.(*Registry)
+	} else {
+		newRegistry = &Registry{
+			request:  r,
+			sessions: make(map[string]sessionInfo),
+		}
+		*r = *r.WithContext(context.WithValue(ctx, 0, newRegistry))
+	}
+	fmt.Println(newRegistry)
+	// store :: sessions.Store
+	//   = sessions.CookieStore
+	//
+	// registry := sessions.GetRegistry(r)
+	// var session *sessions.Session
+	// var err error
+	// rstore := store.(*sessions.CookieStore)
+	// name := sessionName
+	// if info, ok := registry.sessions[name]; ok {
+	// 	session, err = info.s, info.e
+	// } else {
+	// 	session, err = rstore.New(registry.request, name)
+	// 	session.name = name
+	// 	registry.sessions[name] = sessions.sessionInfo{s: session, e: err}
+	// }
+	// session.store = store
 	session, _ := store.Get(r, sessionName)
 	return session
 }
