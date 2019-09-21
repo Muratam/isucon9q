@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -17,10 +16,6 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
-
-var users = make([]User, 0)
-var idToUserServerMap = map[string]interface{}{}
-var accountNameToIDServerMap = map[string]interface{}{}
 
 func setInitializeFunction() {
 	idToUserServer.server.InitializeFunction = func() {
@@ -56,11 +51,24 @@ func setInitializeFunction() {
 		}
 		idToItemServer.MSet(idToItemServerMap)
 	}
+	itemIdToTransactionEvidenceServer.server.InitializeFunction = func() {
+		tes := make([]TransactionEvidence, 0)
+		err := dbx.Select(&tes, "SELECT * FROM `transaction_evidences`")
+		if err != nil {
+			panic(err)
+		}
+		localMap := map[string]interface{}{}
+		for _, te := range tes {
+			localMap[strconv.Itoa(int(te.ItemID))] = te
+		}
+		itemIdToTransactionEvidenceServer.MSet(localMap)
+	}
+
 	transactionEvidenceToShippingsServer.server.InitializeFunction = func() {
 		log.Println("TransactionEvidence init")
 		// init TransactionEvidence
 		ships := make([]Shipping, 0)
-		err := dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id IN (SELECT id FROM `transaction_evidences`)")
+		err := dbx.Select(&ships, "SELECT * from `shippings` WHERE transaction_evidence_id")
 		if err != nil {
 			panic(err)
 		}
@@ -72,13 +80,41 @@ func setInitializeFunction() {
 	}
 }
 
+// ローカルキャッシュ
+var users = make([]User, 0)
+var idToUserServerMap = map[string]interface{}{}
+var accountNameToIDServerMap = map[string]interface{}{}
+var isBoughtByKey = sync.Map{} // rb.ItemID -> (chan int)
+var sessionCache = sync.Map{}  //[string]sessions.Session{}
+
 func initializeDBtoOnMemory() {
+	users = make([]User, 0)
+	idToUserServerMap = map[string]interface{}{}
+	accountNameToIDServerMap = map[string]interface{}{}
+	isBoughtByKey = sync.Map{}
+	sessionCache = sync.Map{}
 	// 1台目にこれが呼ばれてるけど...
 	// 複数台から同時に呼ばないように注意
-	idToUserServer.Initialize()
-	accountNameToIDServer.Initialize()
-	idToItemServer.Initialize()
-	transactionEvidenceToShippingsServer.Initialize()
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		idToUserServer.Initialize()
+		accountNameToIDServer.Initialize()
+		wg.Done()
+	}()
+	go func() {
+		idToItemServer.Initialize()
+		wg.Done()
+	}()
+	go func() {
+		transactionEvidenceToShippingsServer.Initialize()
+		wg.Done()
+	}()
+	go func() {
+		itemIdToTransactionEvidenceServer.Initialize()
+		wg.Done()
+	}()
+	wg.Wait()
 }
 
 func postInitialize(w http.ResponseWriter, r *http.Request) {
@@ -190,8 +226,6 @@ func postItemEdit(w http.ResponseWriter, r *http.Request) {
 		ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
 	})
 }
-
-var isBoughtByKey sync.Map // rb.ItemID -> (chan int)
 
 func postBuy(w http.ResponseWriter, r *http.Request) {
 	rb := reqBuy{}
@@ -309,19 +343,35 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// 成功する(itemkeyでロックしているので)
-		result, err := dbx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			targetItem.SellerID,
-			buyer.ID,
-			TransactionEvidenceStatusWaitShipping,
-			targetItem.ID,
-			targetItem.Name,
-			targetItem.Price,
-			targetItem.Description,
-			category.ID,
-			category.ParentID,
-		)
 		now := time.Now().Truncate(time.Second)
+		transactionEvidence := TransactionEvidence{
+			// ID
+			SellerID:           targetItem.SellerID,
+			BuyerID:            buyer.ID,
+			Status:             TransactionEvidenceStatusWaitShipping,
+			ItemID:             targetItem.ID,
+			ItemName:           targetItem.Name,
+			ItemPrice:          targetItem.Price,
+			ItemDescription:    targetItem.Description,
+			ItemCategoryID:     category.ID,
+			ItemRootCategoryID: category.ParentID,
+			CreatedAt:          now, // WARN: 多分行ける
+			UpdatedAt:          now,
+		}
+		result, _ := dbx.Exec("INSERT INTO `transaction_evidences` (`seller_id`, `buyer_id`, `status`, `item_id`, `item_name`, `item_price`, `item_description`,`item_category_id`,`item_root_category_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			transactionEvidence.SellerID,
+			transactionEvidence.BuyerID,
+			transactionEvidence.Status,
+			transactionEvidence.ItemID,
+			transactionEvidence.ItemName,
+			transactionEvidence.ItemPrice,
+			transactionEvidence.ItemDescription,
+			transactionEvidence.ItemCategoryID,
+			transactionEvidence.ItemRootCategoryID,
+		)
 		transactionEvidenceID, _ = result.LastInsertId()
+		transactionEvidence.ID = transactionEvidenceID
+		itemIdToTransactionEvidenceServer.Set(itemIdStr, transactionEvidence)
 		targetItem.BuyerID = buyer.ID
 		targetItem.Status = ItemStatusTrading
 		targetItem.UpdatedAt = now
@@ -377,8 +427,8 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	transactionEvidence := TransactionEvidence{}
-	err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
-	if err == sql.ErrNoRows {
+	ok := itemIdToTransactionEvidenceServer.Get(strconv.Itoa(int(itemID)), &transactionEvidence)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 		return
 	}
@@ -392,7 +442,7 @@ func postShip(w http.ResponseWriter, r *http.Request) {
 	}
 	shipping := Shipping{}
 	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
-	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+	ok = transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
 	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
 		return
@@ -447,7 +497,7 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
 			return
 		}
-		dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+		itemIdToTransactionEvidenceServer.Get(strconv.Itoa(int(itemID)), &transactionEvidence)
 		if transactionEvidence.SellerID != seller.ID {
 			outputErrorMsg(w, http.StatusForbidden, "権限がありません")
 			return
@@ -477,7 +527,10 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		now := time.Now().Truncate(time.Second)
-		_, err = dbx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
+		transactionEvidence.Status = TransactionEvidenceStatusWaitDone
+		transactionEvidence.UpdatedAt = now
+		itemIdToTransactionEvidenceServer.Set(itemIDStr, transactionEvidence)
+		dbx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
 			TransactionEvidenceStatusWaitDone,
 			now,
 			transactionEvidence.ID,
@@ -526,8 +579,8 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
 			return
 		}
-		err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
-		if err == sql.ErrNoRows {
+		ok = itemIdToTransactionEvidenceServer.Get(itemIdStr, &transactionEvidence)
+		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
 			return
 		}
@@ -558,6 +611,9 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 		shipping.Status = ShippingsStatusDone
 		shipping.UpdatedAt = now
 		transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
+		transactionEvidence.Status = TransactionEvidenceStatusDone
+		transactionEvidence.UpdatedAt = now
+		itemIdToTransactionEvidenceServer.Set(itemIdStr, transactionEvidence)
 		dbx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
 			TransactionEvidenceStatusDone,
 			now,
