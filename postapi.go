@@ -713,6 +713,8 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			successedB = true
 		})
 		if !successedB {
+			log.Println("Item Insert Error", err)
+			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
 		seller.NumSellItems += 1
