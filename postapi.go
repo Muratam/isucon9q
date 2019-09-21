@@ -710,6 +710,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					return
 				}
+				alreadyExists = false
 				tx.Set(itemIDStr, item)
 				successedB = true
 			})
