@@ -19,33 +19,25 @@ import (
 )
 
 func setInitializeFunction() {
+	users := make([]User, 0)
+	idToUserServerMap := map[string]interface{}{}
+	accountNameToIDServerMap := map[string]interface{}{}
 	idToUserServer.server.InitializeFunction = func() {
 		log.Println("idToUserServer init")
-		users := make([]User, 0)
 		err := dbx.Select(&users, "SELECT * FROM `users`")
 		if err != nil {
 			panic(err)
 		}
-		idToUserServerMap := map[string]interface{}{}
 		for _, u := range users {
 			u.PlainPassword = userIdToPlainPassword[int(u.ID)]
 			key := strconv.Itoa(int(u.ID))
 			idToUserServerMap[key] = u
+			accountNameToIDServerMap[u.AccountName] = key
 		}
 		idToUserServer.MSet(idToUserServerMap)
 	}
 	accountNameToIDServer.server.InitializeFunction = func() {
 		log.Println("accountNameToIDServer init")
-		users := make([]User, 0)
-		err := dbx.Select(&users, "SELECT * FROM `users`")
-		if err != nil {
-			panic(err)
-		}
-		accountNameToIDServerMap := map[string]interface{}{}
-		for _, u := range users {
-			key := strconv.Itoa(int(u.ID))
-			accountNameToIDServerMap[u.AccountName] = key
-		}
 		accountNameToIDServer.MSet(accountNameToIDServerMap)
 	}
 	idToItemServer.server.InitializeFunction = func() {
