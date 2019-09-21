@@ -367,21 +367,17 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  item.CreatedAt.Unix(),
 		})
 	}
-
 	hasNext := false
 	if len(itemSimples) > ItemsPerPage {
 		hasNext = true
 		itemSimples = itemSimples[0:ItemsPerPage]
 	}
-
-	rui := resUserItems{
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	json.NewEncoder(w).Encode(resUserItems{
 		User:    &userSimple,
 		Items:   itemSimples,
 		HasNext: hasNext,
-	}
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(rui)
+	})
 }
 
 func getTransactions(w http.ResponseWriter, r *http.Request) {
