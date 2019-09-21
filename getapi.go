@@ -15,60 +15,25 @@ import (
 	"goji.io/pat"
 )
 
+var sessionCache map[string]*sessions.Session
+
 func getSession(r *http.Request) *sessions.Session {
+	// これをキーにして返す
 	cookie, err := r.Cookie("session_isucari")
 	if err == nil {
-		fmt.Println("COOKIE:", cookie.Value)
+		// csrf_token / user_id
+		// fmt.Println("COOKIE:", cookie.Value)
+		if val, ok := sessionCache[cookie.Value]; ok {
+			return val
+		} else {
+			session, _ := store.Get(r, sessionName)
+			sessionCache[cookie.Value] = session
+			return session
+		}
 	} else {
-		fmt.Println(err)
+		session, _ := store.Get(r, sessionName)
+		return session
 	}
-	// session_isucari
-	// type sessionInfo struct {
-	// 	s *sessions.Session
-	// 	e error
-	// }
-	// type Registry struct {
-	// 	request  *http.Request
-	// 	sessions map[string]sessionInfo
-	// }
-	// Get Registry
-	// var ctx = r.Context()
-	// registry := ctx.Value(0)
-	// var newRegistry *Registry
-	// if registry != nil {
-	// 	newRegistry = registry.(*Registry)
-	// } else {
-	// 	newRegistry = &Registry{
-	// 		request:  r,
-	// 		sessions: make(map[string]sessionInfo),
-	// 	}
-	// 	*r = *r.WithContext(context.WithValue(ctx, 0, newRegistry))
-	// }
-	// //
-	// var session *sessions.Session
-	// var err error
-	// if info, ok := newRegistry.sessions[sessionName]; ok {
-	// 	session, err = info.s, info.e
-	// } else {
-
-	// }
-	// fmt.Println(newRegistry)
-	// store :: sessions.Store
-	//   = sessions.CookieStore
-	//
-	// registry := sessions.GetRegistry(r)
-	// rstore := store.(*sessions.CookieStore)
-	// name := sessionName
-	// if info, ok := registry.sessions[name]; ok {
-	// 	session, err = info.s, info.e
-	// } else {
-	// 	session, err = rstore.New(registry.request, name)
-	// 	session.name = name
-	// 	registry.sessions[name] = sessions.sessionInfo{s: session, e: err}
-	// }
-	// session.store = store
-	session, _ := store.Get(r, sessionName)
-	return session
 }
 
 func getCSRFToken(r *http.Request) string {
