@@ -228,6 +228,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 	targetItem := Item{}
 	itemIdStr := strconv.Itoa(int(rb.ItemID))
 	successed := false
+	var transactionEvidenceID int64
 	idToItemServer.Transaction(itemIdStr, func(tx KeyValueStoreConn) {
 		ok := tx.Get(itemIdStr, &targetItem)
 		if !ok {
@@ -319,7 +320,7 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			category.ParentID,
 		)
 		now := time.Now().Truncate(time.Second)
-		transactionEvidenceID, _ := result.LastInsertId()
+		transactionEvidenceID, _ = result.LastInsertId()
 		targetItem.BuyerID = buyer.ID
 		targetItem.Status = ItemStatusTrading
 		targetItem.UpdatedAt = now
@@ -347,11 +348,13 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 			now,
 		}
 		transactionEvidenceToShippingsServer.Set(strconv.Itoa(int(transactionEvidenceID)), ship)
-		w.Header().Set("Content-Type", "application/json;charset=utf-8")
-		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
 		successed = true
 	})
 	*chanBoughtExistance <- successed
+	if successed {
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidenceID})
+	}
 }
 
 func postShip(w http.ResponseWriter, r *http.Request) {
@@ -527,6 +530,7 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	itemIdStr := strconv.Itoa(int(itemID))
 	successed := false
+	transactionEvidence := TransactionEvidence{}
 	idToItemServer.Transaction(itemIdStr, func(tx KeyValueStoreConn) {
 		item := Item{}
 		ok := tx.Get(itemIdStr, &item)
@@ -538,7 +542,6 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 			outputErrorMsg(w, http.StatusForbidden, "商品が取引中ではありません")
 			return
 		}
-		transactionEvidence := TransactionEvidence{}
 		err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
 		if err == sql.ErrNoRows {
 			outputErrorMsg(w, http.StatusNotFound, "transaction_evidences not found")
@@ -584,10 +587,12 @@ func postComplete(w http.ResponseWriter, r *http.Request) {
 			now,
 			itemID,
 		)
-		w.Header().Set("Content-Type", "application/json;charset=utf-8")
-		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidence.ID})
 		successed = true
 	})
+	if successed {
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidence.ID})
+	}
 }
 
 func postSell(w http.ResponseWriter, r *http.Request) {
@@ -677,6 +682,8 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		return
 	}
+	successed := false
+	var itemID int
 	idToUserServer.Transaction(strUserId, func(utx KeyValueStoreConn) {
 		seller := User{}
 		utx.Get(strUserId, &seller)
@@ -690,7 +697,7 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			CategoryID:  category.ID,
 		}
 		for {
-			itemID := idToItemServer.DBSize() + 1
+			itemID = idToItemServer.DBSize() + 1
 			itemIDStr := strconv.Itoa(itemID)
 			now := time.Now().Truncate(time.Second)
 			item.ID = int64(itemID)
@@ -723,11 +730,13 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 			seller.NumSellItems += 1
 			seller.LastBump = now
 			utx.Set(strUserId, seller)
-			w.Header().Set("Content-Type", "application/json;charset=utf-8")
-			json.NewEncoder(w).Encode(resSell{ID: int64(itemID)})
 			break
 		}
 	})
+	if successed {
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resSell{ID: int64(itemID)})
+	}
 }
 
 func postBump(w http.ResponseWriter, r *http.Request) {
@@ -753,11 +762,11 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 		outputErrorMsg(w, http.StatusNotFound, "user not found")
 		return
 	}
-
+	successed := false
+	targetItem := Item{}
 	idToUserServer.Transaction(uidStr, func(utx KeyValueStoreConn) {
 		itemIDStr := strconv.Itoa(int(itemID))
 		idToItemServer.Transaction(itemIDStr, func(itx KeyValueStoreConn) {
-			targetItem := Item{}
 			ok := itx.Get(itemIDStr, &targetItem)
 			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "item not found")
@@ -787,15 +796,18 @@ func postBump(w http.ResponseWriter, r *http.Request) {
 			)
 			seller.LastBump = now
 			utx.Set(uidStr, seller)
-			w.Header().Set("Content-Type", "application/json;charset=utf-8")
-			json.NewEncoder(w).Encode(&resItemEdit{
-				ItemID:        targetItem.ID,
-				ItemPrice:     targetItem.Price,
-				ItemCreatedAt: targetItem.CreatedAt.Unix(),
-				ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
-			})
+			successed = true
 		})
 	})
+	if successed {
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(&resItemEdit{
+			ItemID:        targetItem.ID,
+			ItemPrice:     targetItem.Price,
+			ItemCreatedAt: targetItem.CreatedAt.Unix(),
+			ItemUpdatedAt: targetItem.UpdatedAt.Unix(),
+		})
+	}
 }
 
 func postLogin(w http.ResponseWriter, r *http.Request) {
