@@ -18,10 +18,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var users = make([]User, 0)
+var idToUserServerMap = map[string]interface{}{}
+var accountNameToIDServerMap = map[string]interface{}{}
+
 func setInitializeFunction() {
-	users := make([]User, 0)
-	idToUserServerMap := map[string]interface{}{}
-	accountNameToIDServerMap := map[string]interface{}{}
 	idToUserServer.server.InitializeFunction = func() {
 		log.Println("idToUserServer init")
 		err := dbx.Select(&users, "SELECT * FROM `users`")
