@@ -15,7 +15,7 @@ import (
 	"goji.io/pat"
 )
 
-var sessionCache map[string]*sessions.Session
+var sessionCache = map[string]*sessions.Session{}
 
 func getSession(r *http.Request) *sessions.Session {
 	// これをキーにして返す
