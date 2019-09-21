@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -16,35 +15,48 @@ import (
 	"goji.io/pat"
 )
 
-type sessionInfo struct {
-	s *sessions.Session
-	e error
-}
-type Registry struct {
-	request  *http.Request
-	sessions map[string]sessionInfo
-}
-
 func getSession(r *http.Request) *sessions.Session {
-	var ctx = r.Context()
-	registry := ctx.Value(0)
-	var newRegistry *Registry
-	if registry != nil {
-		newRegistry = registry.(*Registry)
+	cookie, err := r.Cookie("session_isucari")
+	if err == nil {
+		fmt.Println("COOKIE:", cookie.Value)
 	} else {
-		newRegistry = &Registry{
-			request:  r,
-			sessions: make(map[string]sessionInfo),
-		}
-		*r = *r.WithContext(context.WithValue(ctx, 0, newRegistry))
+		fmt.Println(err)
 	}
-	fmt.Println(newRegistry)
+	// session_isucari
+	// type sessionInfo struct {
+	// 	s *sessions.Session
+	// 	e error
+	// }
+	// type Registry struct {
+	// 	request  *http.Request
+	// 	sessions map[string]sessionInfo
+	// }
+	// Get Registry
+	// var ctx = r.Context()
+	// registry := ctx.Value(0)
+	// var newRegistry *Registry
+	// if registry != nil {
+	// 	newRegistry = registry.(*Registry)
+	// } else {
+	// 	newRegistry = &Registry{
+	// 		request:  r,
+	// 		sessions: make(map[string]sessionInfo),
+	// 	}
+	// 	*r = *r.WithContext(context.WithValue(ctx, 0, newRegistry))
+	// }
+	// //
+	// var session *sessions.Session
+	// var err error
+	// if info, ok := newRegistry.sessions[sessionName]; ok {
+	// 	session, err = info.s, info.e
+	// } else {
+
+	// }
+	// fmt.Println(newRegistry)
 	// store :: sessions.Store
 	//   = sessions.CookieStore
 	//
 	// registry := sessions.GetRegistry(r)
-	// var session *sessions.Session
-	// var err error
 	// rstore := store.(*sessions.CookieStore)
 	// name := sessionName
 	// if info, ok := registry.sessions[name]; ok {
