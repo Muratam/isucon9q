@@ -37,12 +37,12 @@ func getUser(r *http.Request) (user User, errCode int, errMsg string) {
 	if !ok {
 		return user, http.StatusNotFound, "no session"
 	}
-	// WARN: 型が怪しいけど多分大丈夫
+
 	userIDStr := strconv.Itoa(int(userID.(int64)))
-	if !smUserServer.Exists(userIDStr) {
+	exists := idToUserServer.Get(userIDStr, &user)
+	if !exists {
 		return user, http.StatusNotFound, "user not found"
 	}
-	smUserServer.Load(userIDStr, &user)
 	return user, http.StatusOK, ""
 }
 
@@ -105,7 +105,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		var seller User
 		sellerIDStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIDStr, &seller)
+		idToUserServer.Get(sellerIDStr, &seller)
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
@@ -158,14 +158,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var categoryIDs []int
-	err = dbx.Select(&categoryIDs, "SELECT id FROM `categories` WHERE parent_id=?", rootCategory.ID)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
+	categoryIDs := parentIdToId[rootCategory.ID]
 	query := r.URL.Query()
 	itemIDStr := query.Get("item_id")
 	var itemID int64
@@ -227,23 +220,20 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemSimples := []ItemSimple{}
-	// keys := make([]string, 0)
-	// for _, item := range items {
-	// 	sellerIdStr := strconv.Itoa(int(item.SellerID))
-	// 	keys = append(keys, sellerIdStr)
-	// }
-	// values := smUserServer.MultiLoad(keys)
+	keys := make([]string, len(items))
+	for i, item := range items {
+		keys[i] = strconv.Itoa(int(item.SellerID))
+	}
+	mGot := idToUserServer.MGet(keys)
 	for _, item := range items {
 		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
-		// value := values[i]
-		// DecodeFromBytes(value, &seller)
 		var seller User
 		sellerIdStr := strconv.Itoa(int(item.SellerID))
-		smUserServer.Load(sellerIdStr, &seller)
+		mGot.Get(sellerIdStr, &seller)
 		var simpleSeller UserSimple
 		simpleSeller.ID = seller.ID
 		simpleSeller.AccountName = seller.AccountName
@@ -354,7 +344,7 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 	var seller User
 	var simpleSeller UserSimple
 	sellerIdStr := strconv.Itoa(int(userSimple.ID))
-	smUserServer.Load(sellerIdStr, &seller)
+	idToUserServer.Get(sellerIdStr, &seller)
 	simpleSeller.ID = seller.ID
 	simpleSeller.AccountName = seller.AccountName
 	simpleSeller.NumSellItems = seller.NumSellItems
@@ -377,21 +367,17 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  item.CreatedAt.Unix(),
 		})
 	}
-
 	hasNext := false
 	if len(itemSimples) > ItemsPerPage {
 		hasNext = true
 		itemSimples = itemSimples[0:ItemsPerPage]
 	}
-
-	rui := resUserItems{
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	json.NewEncoder(w).Encode(resUserItems{
 		User:    &userSimple,
 		Items:   itemSimples,
 		HasNext: hasNext,
-	}
-
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(rui)
+	})
 }
 
 func getTransactions(w http.ResponseWriter, r *http.Request) {
@@ -424,11 +410,10 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tx := dbx.MustBegin()
 	items := []Item{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
-		err := tx.Select(&items,
+		dbx.Select(&items,
 			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			user.ID,
@@ -437,77 +422,55 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemID,
 			TransactionsPerPage+1,
 		)
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			tx.Rollback()
-			return
-		}
 	} else {
 		// 1st page
-		err := tx.Select(&items,
+		dbx.Select(&items,
 			"SELECT * FROM `items` WHERE (`seller_id` = ? OR `buyer_id` = ?) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			user.ID,
 			user.ID,
 			TransactionsPerPage+1,
 		)
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			tx.Rollback()
-			return
-		}
 	}
-
+	sellerIds := make([]string, len(items))
+	for i, item := range items {
+		sellerIds[i] = strconv.Itoa(int(item.SellerID))
+	}
+	mGot := idToUserServer.MGet(sellerIds)
 	wg := sync.WaitGroup{}
 	itemDetails := make([]ItemDetail, 0, len(items))
 	chans := make([]chan string, len(items))
-	userSimples, err := getUserSimples(tx)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error")
-		tx.Rollback()
-		return
-	}
 	for i, item := range items {
 		chans[i] = make(chan string, 1)
-		seller, ok := userSimples[item.SellerID]
+		var seller UserSimple
+		ok := mGot.Get(strconv.Itoa(int(item.SellerID)), &seller)
 		if !ok {
 			outputErrorMsg(w, http.StatusNotFound, "seller not found")
-			tx.Rollback()
 			return
 		}
-		category, err := getCategoryByID(tx, item.CategoryID)
+		category, err := getCategoryByID(dbx, item.CategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
-			tx.Rollback()
 			return
 		}
 
 		itemDetail := ItemDetail{
-			ID:       item.ID,
-			SellerID: item.SellerID,
-			Seller:   &seller,
-			// BuyerID
-			// Buyer
+			ID:          item.ID,
+			SellerID:    item.SellerID,
+			Seller:      &seller,
 			Status:      item.Status,
 			Name:        item.Name,
 			Price:       item.Price,
 			Description: item.Description,
 			ImageURL:    getImageURL(item.ImageName),
 			CategoryID:  item.CategoryID,
-			// TransactionEvidenceID
-			// TransactionEvidenceStatus
-			// ShippingStatus
-			Category:  &category,
-			CreatedAt: item.CreatedAt.Unix(),
+			Category:    &category,
+			CreatedAt:   item.CreatedAt.Unix(),
 		}
 
 		if item.BuyerID != 0 {
-			buyer, err := getUserSimpleByID(tx, item.BuyerID)
+			buyer, err := getUserSimpleByID(dbx, item.BuyerID)
 			if err != nil {
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
-				tx.Rollback()
 				return
 			}
 			itemDetail.BuyerID = item.BuyerID
@@ -515,27 +478,19 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		transactionEvidence := TransactionEvidence{}
-		err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ID)
+		err = dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ID)
 		if err != nil && err != sql.ErrNoRows {
 			// It's able to ignore ErrNoRows
-			log.Print(err)
 			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			tx.Rollback()
 			return
 		}
 
 		if transactionEvidence.ID > 0 {
 			shipping := Shipping{}
-			err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
+			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
-				tx.Rollback()
-				return
-			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-				tx.Rollback()
 				return
 			}
 			ssrStatus := shipping.Status
@@ -548,7 +503,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						log.Print(err)
 						outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-						tx.Rollback()
 						return
 					}
 					<-chans[i]
@@ -574,8 +528,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wg.Wait()
-
-	tx.Commit()
 
 	hasNext := false
 	if len(itemDetails) > TransactionsPerPage {
@@ -609,17 +561,11 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := Item{}
-	err = dbx.Get(&item, "SELECT * FROM `items` WHERE `id` = ?", itemID)
-	if err == sql.ErrNoRows {
+	ok = idToItemServer.Get(strconv.Itoa(int(itemID)), &item)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "item not found")
 		return
 	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
 	category, err := getCategoryByID(dbx, item.CategoryID)
 	if err != nil {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
@@ -671,17 +617,12 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 
 		if transactionEvidence.ID > 0 {
 			shipping := Shipping{}
-			err = dbx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
+			trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+			ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+			if !ok {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				return
 			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-				return
-			}
-
 			itemDetail.TransactionEvidenceID = transactionEvidence.ID
 			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
 			itemDetail.ShippingStatus = shipping.Status
@@ -724,16 +665,12 @@ func getQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shipping := Shipping{}
-	err = dbx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-	if err == sql.ErrNoRows {
+	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+	if !ok {
 		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
 		return
 	}
-	if err != nil {
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		return
-	}
-
 	if shipping.Status != ShippingsStatusWaitPickup && shipping.Status != ShippingsStatusShipping {
 		outputErrorMsg(w, http.StatusForbidden, "qrcode not available")
 		return

@@ -1,12 +1,12 @@
 package main
 
 var categories = map[int]Category{
-	1: {ID: 1, ParentID: 0, CategoryName: "ソファー", ParentCategoryName: ""},
-	2: {ID: 2, ParentID: 1, CategoryName: "一人掛けソファー", ParentCategoryName: "ソファー"},
-	3: {ID: 3, ParentID: 1, CategoryName: "二人掛けソファー", ParentCategoryName: "ソファー"},
-	4: {ID: 4, ParentID: 1, CategoryName: "コーナーソファー", ParentCategoryName: "ソファー"},
-	5: {ID: 5, ParentID: 1, CategoryName: "二段ソファー", ParentCategoryName: "ソファー"},
-	6: {ID: 6, ParentID: 1, CategoryName: "ソファーベッド", ParentCategoryName: "ソファー"},
+	1:  {ID: 1, ParentID: 0, CategoryName: "ソファー", ParentCategoryName: ""},
+	2:  {ID: 2, ParentID: 1, CategoryName: "一人掛けソファー", ParentCategoryName: "ソファー"},
+	3:  {ID: 3, ParentID: 1, CategoryName: "二人掛けソファー", ParentCategoryName: "ソファー"},
+	4:  {ID: 4, ParentID: 1, CategoryName: "コーナーソファー", ParentCategoryName: "ソファー"},
+	5:  {ID: 5, ParentID: 1, CategoryName: "二段ソファー", ParentCategoryName: "ソファー"},
+	6:  {ID: 6, ParentID: 1, CategoryName: "ソファーベッド", ParentCategoryName: "ソファー"},
 	10: {ID: 10, ParentID: 0, CategoryName: "家庭用チェア", ParentCategoryName: ""},
 	11: {ID: 11, ParentID: 10, CategoryName: "スツール", ParentCategoryName: "家庭用チェア"},
 	12: {ID: 12, ParentID: 10, CategoryName: "クッションスツール", ParentCategoryName: "家庭用チェア"},
@@ -44,4 +44,14 @@ var categories = map[int]Category{
 	64: {ID: 64, ParentID: 60, CategoryName: "ロッキングチェア", ParentCategoryName: "座椅子"},
 	65: {ID: 65, ParentID: 60, CategoryName: "座布団", ParentCategoryName: "座椅子"},
 	66: {ID: 66, ParentID: 60, CategoryName: "空気椅子", ParentCategoryName: "座椅子"},
+}
+var parentIdToId = map[int][]int{
+	0:  []int{1, 10, 20, 30, 40, 50, 60},
+	1:  []int{2, 3, 4, 5, 6},
+	10: []int{11, 12, 13, 14, 15},
+	20: []int{21, 22, 23, 24},
+	30: []int{31, 32, 33, 34, 35},
+	40: []int{41, 42, 43, 44, 45},
+	50: []int{51, 52, 53, 54, 55, 56},
+	60: []int{61, 62, 63, 64, 65, 66},
 }

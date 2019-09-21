@@ -36,13 +36,10 @@ const (
 	ShippingsStatusShipping   = "shipping"
 	ShippingsStatusDone       = "done"
 
-	BumpChargeSeconds = 3 * time.Second
-
+	BumpChargeSeconds   = 3 * time.Second
 	ItemsPerPage        = 48
 	TransactionsPerPage = 10
-
 	BcryptCost          = 4
-	MasterServerAddress = "172.24.122.186"
 )
 
 var (
@@ -52,13 +49,27 @@ var (
 )
 
 // とりあえず plain password だけを管理するサーバー(ID/AccountName/PlainPassword以外の情報は嘘)
-var isMasterServerIP = IsMasterServerIP()
+var isMasterServerIP = MyServerIsOnMasterServerIP()
 
 // string -> string
-var accountNameToIDServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8885", isMasterServerIP, DefaultSendCustomFunction)
+// var accountNameToIDServer = NewRedisWrapper(RedisHostPrivateIPAddress, 0)
+var accountNameToIDServer = NewSyncMapServerConn(GetMasterServerAddress()+":8885", isMasterServerIP)
 
 // userId(string) -> User{}
-var smUserServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8884", isMasterServerIP, DefaultSendCustomFunction)
+// var idToUserServer = NewRedisWrapper(RedisHostPrivateIPAddress, 1)
+var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMasterServerIP)
 
-// itemid (string) -> isSold(bool) ()
-var smItemPostBuyIsLockedServer = NewMasterOrSlaveSyncMapServer(GetMasterServerAddress()+":8886", isMasterServerIP, DefaultSendCustomFunction)
+// itemId(string) -> Item{}
+// var idToItemServer = NewRedisWrapper(RedisHostPrivateIPAddress, 2)
+var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMasterServerIP)
+
+// transaction_evidence_id -> shippings
+// var transactionEvidenceToShippingsServer = NewRedisWrapper(RedisHostPrivateIPAddress, 3)
+var transactionEvidenceToShippingsServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+
+// string -> []Hoge
+// var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+// const keyOfTransactionEvidences = "transaction_evidences"
+// const keyOfShippings = "shippings"
+// item_id -> transaction_evidences
+//      [id -> ]のために保持？
