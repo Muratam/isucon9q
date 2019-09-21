@@ -671,56 +671,62 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 	idToUserServer.Transaction(strUserId, func(utx KeyValueStoreConn) {
 		seller := User{}
 		utx.Get(strUserId, &seller)
-		item := Item{
-			SellerID:    seller.ID,
-			Status:      ItemStatusOnSale,
-			Name:        name,
-			Price:       price,
-			Description: description,
-			ImageName:   imgName,
-			CategoryID:  category.ID,
-		}
-		itemID = idToItemServer.DBSize() + 1
-		itemIDStr := strconv.Itoa(itemID)
-		now := time.Now().Truncate(time.Second)
-		item.ID = int64(itemID)
-		item.CreatedAt = now
-		item.UpdatedAt = now
-		item.TimeDateID = now.Format("20060102150405") + fmt.Sprintf("%08d", itemID)
-		successedB := false
-		idToItemServer.Transaction(itemIDStr, func(tx KeyValueStoreConn) {
-			if tx.Exists(itemIDStr) {
-				return
+		alreadyExists := false
+		for {
+			item := Item{
+				SellerID:    seller.ID,
+				Status:      ItemStatusOnSale,
+				Name:        name,
+				Price:       price,
+				Description: description,
+				ImageName:   imgName,
+				CategoryID:  category.ID,
 			}
-			_, err := dbx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				item.SellerID,
-				item.Status,
-				item.Name,
-				item.Price,
-				item.Description,
-				item.ImageName,
-				item.CategoryID,
-				item.CreatedAt,
-				item.UpdatedAt,
-				item.TimeDateID,
-			)
-			if err != nil {
+			itemID = idToItemServer.DBSize() + 1
+			itemIDStr := strconv.Itoa(itemID)
+			now := time.Now().Truncate(time.Second)
+			item.ID = int64(itemID)
+			item.CreatedAt = now
+			item.UpdatedAt = now
+			item.TimeDateID = now.Format("20060102150405") + fmt.Sprintf("%08d", itemID)
+			successedB := false
+			idToItemServer.Transaction(itemIDStr, func(tx KeyValueStoreConn) {
+				if tx.Exists(itemIDStr) {
+					alreadyExists = true
+					return
+				}
+				_, err := dbx.Exec("INSERT INTO `items` (`seller_id`, `status`, `name`, `price`, `description`,`image_name`,`category_id`, `created_at`, `updated_at`, `timedateid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+					item.SellerID,
+					item.Status,
+					item.Name,
+					item.Price,
+					item.Description,
+					item.ImageName,
+					item.CategoryID,
+					item.CreatedAt,
+					item.UpdatedAt,
+					item.TimeDateID,
+				)
+				if err != nil {
+					return
+				}
+				tx.Set(itemIDStr, item)
+				successedB = true
+			})
+			if alreadyExists {
+				continue
+			}
+			if !successedB {
 				log.Println("Item Insert Error", err)
-				outputErrorMsg(w, http.StatusNotFound, "category not found")
+				outputErrorMsg(w, http.StatusNotFound, "Item Insert Error")
 				return
 			}
-			tx.Set(itemIDStr, item)
-			successedB = true
-		})
-		if !successedB {
-			log.Println("Item Insert Error", err)
-			outputErrorMsg(w, http.StatusNotFound, "category not found")
+			seller.NumSellItems += 1
+			seller.LastBump = now
+			utx.Set(strUserId, seller)
+			successedA = true
 			return
 		}
-		seller.NumSellItems += 1
-		seller.LastBump = now
-		utx.Set(strUserId, seller)
-		successedA = true
 	})
 	if successedA {
 		w.Header().Set("Content-Type", "application/json;charset=utf-8")
