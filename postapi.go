@@ -439,75 +439,58 @@ func postShipDone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx := dbx.MustBegin()
-
 	transactionEvidence := TransactionEvidence{}
-	err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ? FOR UPDATE", itemID)
-	if err == sql.ErrNoRows {
-		outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
-		tx.Rollback()
-		return
-	}
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-
-	if transactionEvidence.SellerID != seller.ID {
-		outputErrorMsg(w, http.StatusForbidden, "権限がありません")
-		tx.Rollback()
-		return
-	}
-
-	if transactionEvidence.Status != TransactionEvidenceStatusWaitShipping {
-		outputErrorMsg(w, http.StatusForbidden, "準備ができていません")
-		tx.Rollback()
-		return
-	}
-
-	shipping := Shipping{}
-	trIdStr := strconv.Itoa(int(transactionEvidence.ID))
-	ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
-	if !ok {
-		outputErrorMsg(w, http.StatusNotFound, "shippings not found")
-		tx.Rollback()
-		return
-	}
-	var ssr *APIShipmentStatusRes
-	for i := 0; i < 10; i++ {
-		// NOTE: どうなるんだろ...失敗し続けたら
+	itemIDStr := strconv.Itoa(int(itemID))
+	successed := false
+	idToItemServer.Transaction(itemIDStr, func(tx KeyValueStoreConn) {
+		if !idToItemServer.Exists(itemIDStr) {
+			outputErrorMsg(w, http.StatusNotFound, "transaction_evidence not found")
+			return
+		}
+		dbx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", itemID)
+		if transactionEvidence.SellerID != seller.ID {
+			outputErrorMsg(w, http.StatusForbidden, "権限がありません")
+			return
+		}
+		if transactionEvidence.Status != TransactionEvidenceStatusWaitShipping {
+			outputErrorMsg(w, http.StatusForbidden, "準備ができていません")
+			return
+		}
+		shipping := Shipping{}
+		trIdStr := strconv.Itoa(int(transactionEvidence.ID))
+		ok := transactionEvidenceToShippingsServer.Get(trIdStr, &shipping)
+		if !ok {
+			outputErrorMsg(w, http.StatusNotFound, "shippings not found")
+			return
+		}
+		var ssr *APIShipmentStatusRes
 		ssr, err = APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
 			ReserveID: shipping.ReserveID,
 		})
-		if err == nil {
-			break
+		if err != nil {
+			log.Println(err)
+			outputErrorMsg(w, http.StatusForbidden, "API SHIPPMENT ERROR")
+			return
 		}
+		if !(ssr.Status == ShippingsStatusShipping || ssr.Status == ShippingsStatusDone) {
+			outputErrorMsg(w, http.StatusForbidden, "shipment service側で配送中か配送完了になっていません")
+			return
+		}
+		now := time.Now().Truncate(time.Second)
+		_, err = dbx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
+			TransactionEvidenceStatusWaitDone,
+			now,
+			transactionEvidence.ID,
+		)
+		shipping.Status = ssr.Status
+		shipping.UpdatedAt = now
+		transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
+		successed = true
+	})
+	if successed {
+		w.Header().Set("Content-Type", "application/json;charset=utf-8")
+		json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidence.ID})
 	}
-	if !(ssr.Status == ShippingsStatusShipping || ssr.Status == ShippingsStatusDone) {
-		outputErrorMsg(w, http.StatusForbidden, "shipment service側で配送中か配送完了になっていません")
-		tx.Rollback()
-		return
-	}
-	now := time.Now().Truncate(time.Second)
-	_, err = tx.Exec("UPDATE `transaction_evidences` SET `status` = ?, `updated_at` = ? WHERE `id` = ?",
-		TransactionEvidenceStatusWaitDone,
-		now,
-		transactionEvidence.ID,
-	)
-	if err != nil {
-		log.Print(err)
-		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-		tx.Rollback()
-		return
-	}
-	tx.Commit()
-	shipping.Status = ssr.Status
-	shipping.UpdatedAt = now
-	transactionEvidenceToShippingsServer.Set(trIdStr, shipping)
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	json.NewEncoder(w).Encode(resBuy{TransactionEvidenceID: transactionEvidence.ID})
 }
 
 func postComplete(w http.ResponseWriter, r *http.Request) {
