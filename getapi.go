@@ -72,33 +72,57 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	// カテゴリーごと
+	user, errCode, errMsg := getUser(r)
+	if errMsg != "" {
+		outputErrorMsg(w, errCode, errMsg)
+		return
+	}
+	var categoryIDs []int
+	categoriesExists := nil != dbx.Select(&categoryIDs, "SELECT category_id FROM `items` WHERE buyer_id=?", user.ID)
 	items := []Item{}
-	if itemID > 0 && createdAt > 0 {
-		// paging
-		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? AND timedateid < ? ORDER BY timedateid DESC LIMIT ?",
-			ItemStatusOnSale,
-			time.Unix(createdAt, 0).Format("20060102150405")+fmt.Sprintf("%08d", itemID),
-			ItemsPerPage+1,
-		)
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			return
+	preQuery := "SELECT * FROM items WHERE status = ? "
+	midQuery := " AND timedateid < ? "
+	proQuery := " ORDER BY timedateid DESC LIMIT ? "
+	timeDateId := time.Unix(createdAt, 0).Format("20060102150405") + fmt.Sprintf("%08d", itemID)
+	if categoriesExists {
+		categoryQuery := "AND category_id IN (?)"
+		if itemID > 0 && createdAt > 0 { // paging
+			err = dbx.Select(&items,
+				preQuery+midQuery+categoryQuery+proQuery,
+				ItemStatusOnSale,
+				timeDateId,
+				categoryIDs,
+				ItemsPerPage+1,
+			)
+		} else { // 1st page
+			err = dbx.Select(&items,
+				preQuery+categoryQuery+proQuery,
+				ItemStatusOnSale,
+				categoryIDs,
+				ItemsPerPage+1,
+			)
 		}
 	} else {
-		// 1st page
-		err := dbx.Select(&items,
-			"SELECT * FROM items WHERE status = ? ORDER BY timedateid DESC LIMIT ?",
-			ItemStatusOnSale,
-			ItemsPerPage+1,
-		)
-		if err != nil {
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
-			return
+		if itemID > 0 && createdAt > 0 { // paging
+			err = dbx.Select(&items,
+				preQuery+midQuery+proQuery,
+				ItemStatusOnSale,
+				timeDateId,
+				ItemsPerPage+1,
+			)
+		} else { // 1st page
+			err = dbx.Select(&items,
+				preQuery+proQuery,
+				ItemStatusOnSale,
+				ItemsPerPage+1,
+			)
 		}
+	}
+	if err != nil {
+		log.Print(err)
+		outputErrorMsg(w, http.StatusInternalServerError, "db error"+err.Error())
+		return
 	}
 
 	itemSimples := []ItemSimple{}
