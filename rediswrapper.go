@@ -11,11 +11,16 @@ import (
 	"github.com/go-redis/redis"
 )
 
+type WithInitializeFunciton struct {
+	InitializeFunction func()
+}
+
 type RedisWrapper struct {
 	Redis        *redis.Client
 	tx           *redis.Tx
 	pipe         *redis.Pipeliner
 	isAlreadySet bool // Transaction時に既に変更を加えるコマンドを行ったか
+	server       WithInitializeFunciton
 }
 
 func NewRedisWrapper(address string, dbNumber int) *RedisWrapper {
@@ -28,6 +33,7 @@ func NewRedisWrapper(address string, dbNumber int) *RedisWrapper {
 		tx:           nil,
 		pipe:         nil,
 		isAlreadySet: false,
+		server:       WithInitializeFunciton{func() {}},
 	}
 }
 func (this *RedisWrapper) New() *RedisWrapper {
@@ -36,6 +42,7 @@ func (this *RedisWrapper) New() *RedisWrapper {
 		tx:           nil,
 		pipe:         nil,
 		isAlreadySet: false,
+		server:       WithInitializeFunciton{func() {}},
 	}
 }
 func (this *RedisWrapper) IsTransactionNow() bool {
@@ -298,5 +305,5 @@ func (this *RedisWrapper) TransactionWithKeys(keys []string, f func(tx KeyValueS
 	return err == nil
 }
 func (this *RedisWrapper) Initialize() {
-	fmt.Println("Redis Initialize Command Is Not Implemented !!")
+	this.server.InitializeFunction()
 }

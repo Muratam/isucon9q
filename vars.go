@@ -60,10 +60,12 @@ var accountNameToIDServer = NewSyncMapServerConn(GetMasterServerAddress()+":8885
 var idToUserServer = NewSyncMapServerConn(GetMasterServerAddress()+":8884", isMasterServerIP)
 
 // itemId(string) -> Item{}
-var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMasterServerIP)
+// var idToItemServer = NewSyncMapServerConn(GetMasterServerAddress()+":8883", isMasterServerIP)
+var idToItemServer = NewRedisWrapper(RedisHostPrivateIPAddress, 2)
 
 // transaction_evidence_id -> shippings
-var transactionEvidenceToShippingsServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+// var transactionEvidenceToShippingsServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
+var transactionEvidenceToShippingsServer = NewRedisWrapper(RedisHostPrivateIPAddress, 3)
 
 // string -> []Hoge
 // var arrayServer = NewSyncMapServerConn(GetMasterServerAddress()+":8882", isMasterServerIP)
