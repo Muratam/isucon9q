@@ -305,5 +305,6 @@ func (this *RedisWrapper) TransactionWithKeys(keys []string, f func(tx KeyValueS
 	return err == nil
 }
 func (this *RedisWrapper) Initialize() {
+	this.FlushAll()
 	this.server.InitializeFunction()
 }
